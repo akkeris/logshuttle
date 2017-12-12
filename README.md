@@ -1,4 +1,4 @@
-# Alamo Log Shuttle and API #
+# Akkeris Log Shuttle and API #
 
 ## Setting Up ##
 
