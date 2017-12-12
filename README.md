@@ -59,7 +59,7 @@ This API should sit behind the alamo-app-controller process, it should not be hi
 
 ## Add a Log Drains ##
 
-###POST /apps/{appname}/log-drains###
+### POST /apps/{appname}/log-drains
 
 Create a new log drain, log drains allow you to push logs to another syslogd on another host (such as papertrail or an internal syslogd instance listening on a port).
 
@@ -105,7 +105,7 @@ curl \
 
 Disconnects a log drain from forwarding.
 
-###DELETE /apps/{appname}/log-drains/{log_drain_id}###
+### DELETE /apps/{appname}/log-drains/{log_drain_id}
 
 **CURL Example**
 
@@ -136,7 +136,7 @@ curl \
 
 Gets information on a current log drain.
 
-###GET /apps/{appname}/log-drians/{log drain uuid}###
+### GET /apps/{appname}/log-drians/{log drain uuid}
 
 **CURL Example**
 
@@ -166,7 +166,7 @@ curl \
 
 Lists all the log drains for an app.
 
-###GET /apps/{appname}/log-drains###
+### GET /apps/{appname}/log-drains
 
 **CURL Example**
 
@@ -200,7 +200,7 @@ curl \
 
 Add a custom log event for an app.  **This is a private event and should only be called by internal alamo systems** This adds new events that do not exist in the internal infrastructure logging to the log queue, these should only be events that are useful for developers reviewing logs and not necessary for infrastructure use (e.g., information about the app behavior)
 
-###POST /log-events###
+### POST /log-events
 
 **BODY**
 
@@ -236,7 +236,7 @@ With that said we should be cognizant that both shuttle and sessions share a lar
 
 Create a log session that tail the logs coming from the server.  Note that although the body request for the post contains a lines and tail the only functionality this end point delivers is tail, its up to middleware or end user client to obey the max lines / tail=false use case. 
 
-###POST /log-sessions###
+### POST /log-sessions
 
 ```json
 {
