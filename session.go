@@ -23,6 +23,7 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 		select {
 		case message := <-cluster.Consumer.Messages():
 			var msg LogSpec
+			var bmsg BuildLogSpec
 			if err := json.Unmarshal(message.Value, &msg); err == nil {
 				if IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
 					if msg.Time.Unix() < last_date.Unix() {
@@ -42,17 +43,33 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 					}
 				}
 			} else {
-				msg, err := ParseWebLogMessage(string(message.Value))
-				if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
-					if msg.Time.Unix() < last_date.Unix() {
-						msg.Time = time.Now()
+				if err := json.Unmarshal(message.Value, &bmsg); err == nil {
+					logmsg, errd := ParseBuildLogMessage(bmsg)
+					if errd == false && IsAppMatch(logmsg.Kubernetes.ContainerName, app) && logmsg.Topic == space {
+						if logmsg.Time.Unix() < last_date.Unix() {
+							logmsg.Time = time.Now()
+						}
+						last_date = logmsg.Time
+						_, err2 := res.Write([]byte(logmsg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/build: " + logmsg.Log + "\n"))
+						if err2 != nil {
+							return
+						} else if f, ok := res.(http.Flusher); ok {
+							f.Flush()
+						}
 					}
-					last_date = msg.Time
-					_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " alamo/router: " + msg.Log + "\n"))
-					if err2 != nil {
-						return
-					} else if f, ok := res.(http.Flusher); ok {
-						f.Flush()
+				} else {
+					msg, err := ParseWebLogMessage(string(message.Value))
+					if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
+						if msg.Time.Unix() < last_date.Unix() {
+							msg.Time = time.Now()
+						}
+						last_date = msg.Time
+						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/router: " + msg.Log + "\n"))
+						if err2 != nil {
+							return
+						} else if f, ok := res.(http.Flusher); ok {
+							f.Flush()
+						}
 					}
 				}
 			}
@@ -102,7 +119,7 @@ func ReadLogSession(client *redis.Client, kafkaAddrs []string) func(http.Respons
 		}
 		res.WriteHeader(200)
 
-		ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, []string{logSess.Space, "alamoweblogs"}, res, RandomString(16))
+		ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, []string{logSess.Space, "alamoweblogs", "alamobuildlogs"}, res, RandomString(16))
 	}
 }
 
