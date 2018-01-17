@@ -6,6 +6,13 @@ import (
 	cluster "github.com/bsm/sarama-cluster"
 )
 
+type BuildLogSpec struct {
+	Metadata string `json:"metadata"`
+	Build int `json:"build"`
+	Job string `json:"job"`
+	Message string `json:"message"`
+}
+
 type LabelsSpec struct {
 	Name string `json:"name"`
 	PodTemplateHash string `json:"pod-template-hash"`
