@@ -13,6 +13,7 @@ import (
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
 	"strconv"
+	"fmt"
 )
 
 func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspace []string, res http.ResponseWriter, group string) {
@@ -21,59 +22,63 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 	defer cluster.Consumer.Close()
 	for {
 		select {
-		case message := <-cluster.Consumer.Messages():
-			var msg LogSpec
-			var bmsg BuildLogSpec
-			if err := json.Unmarshal(message.Value, &msg); err == nil {
-				if IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
-					if msg.Time.Unix() < last_date.Unix() {
-						msg.Time = time.Now()
-					}
-					last_date = msg.Time
-					proc := Process{App: msg.Kubernetes.ContainerName, Type: "web"}
-					if strings.Index(msg.Kubernetes.ContainerName, "--") != -1 {
-						var components = strings.SplitN(msg.Kubernetes.ContainerName, "--", 2)
-						proc = Process{App: components[0], Type: components[1]}
-					}
-					_, err := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"))
-					if err != nil {
-						return
-					} else if f, ok := res.(http.Flusher); ok {
-						f.Flush()
-					}
-				}
-			} else {
-				if err := json.Unmarshal(message.Value, &bmsg); err == nil {
-					logmsg, errd := ParseBuildLogMessage(bmsg)
-					if errd == false && IsAppMatch(logmsg.Kubernetes.ContainerName, app) && logmsg.Topic == space {
-						if logmsg.Time.Unix() < last_date.Unix() {
-							logmsg.Time = time.Now()
+			case message := <-cluster.Consumer.Messages():
+				if message.Topic == space {
+					var msg LogSpec
+					if err := json.Unmarshal(message.Value, &msg); err == nil {
+						if IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
+							if msg.Time.Unix() < last_date.Unix() {
+								msg.Time = time.Now()
+							}
+							last_date = msg.Time
+							proc := Process{App: msg.Kubernetes.ContainerName, Type: "web"}
+							if strings.Index(msg.Kubernetes.ContainerName, "--") != -1 {
+								var components = strings.SplitN(msg.Kubernetes.ContainerName, "--", 2)
+								proc = Process{App: components[0], Type: components[1]}
+							}
+							_, err := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"))
+							if err != nil {
+								return
+							} else if f, ok := res.(http.Flusher); ok {
+								f.Flush()
+							}
 						}
-						last_date = logmsg.Time
-						_, err2 := res.Write([]byte(logmsg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/build: " + logmsg.Log + "\n"))
-						if err2 != nil {
-							return
-						} else if f, ok := res.(http.Flusher); ok {
-							f.Flush()
-						}
-					}
-				} else {
+					} 
+				} else if message.Topic == "alamoweblogs" {
 					msg, err := ParseWebLogMessage(string(message.Value))
 					if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
 						if msg.Time.Unix() < last_date.Unix() {
 							msg.Time = time.Now()
 						}
 						last_date = msg.Time
-						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/router: " + msg.Log + "\n"))
+						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " alamo/router: " + msg.Log + "\n"))
 						if err2 != nil {
 							return
 						} else if f, ok := res.(http.Flusher); ok {
 							f.Flush()
 						}
+					} 
+				} else if message.Topic == "alamobuildlogs" {
+					var bmsg BuildLogSpec
+					if err := json.Unmarshal(message.Value, &bmsg); err == nil {
+						logmsg, errd := ParseBuildLogMessage(bmsg)
+						if errd == false && IsAppMatch(logmsg.Kubernetes.ContainerName, app) && logmsg.Topic == space {
+							if logmsg.Time.Unix() < last_date.Unix() {
+								logmsg.Time = time.Now()
+							}
+							last_date = logmsg.Time
+							_, err2 := res.Write([]byte(logmsg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/build: " + logmsg.Log + "\n"))
+							if err2 != nil {
+								return
+							} else if f, ok := res.(http.Flusher); ok {
+								f.Flush()
+							}
+						}
+					} else {
+						fmt.Println("ERROR: Failed to parse build log")
 					}
-				}
-			}
-			cluster.Consumer.MarkOffset(message, "")
+				} 
+				cluster.Consumer.MarkOffset(message, "")
 		}
 	}
 }
