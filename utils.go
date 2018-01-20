@@ -228,7 +228,7 @@ func ParseWebLogMessage(message string) (LogSpec, bool) {
 		Kubernetes: KubernetesSpec{
 			NamespaceName: space,
 			PodId:         "",
-			PodName:       "alamo/router",
+			PodName:       "akkeris/router",
 			ContainerName: app,
 			Labels: LabelsSpec{
 				Name:            "",
@@ -236,3 +236,44 @@ func ParseWebLogMessage(message string) (LogSpec, bool) {
 			Host: ""},
 		Topic: space, Tag: ""}, false
 }
+
+
+
+func ParseBuildLogMessage(bmsg BuildLogSpec) (LogSpec, bool) {
+	var app = ""
+	var space = ""
+
+	var splitAppName = strings.SplitN(bmsg.Metadata, "-", 2)
+	app = splitAppName[0]
+	if len(splitAppName) == 1 {
+		space = "default"
+	} else {
+		space = splitAppName[1]
+	}
+	
+	if app == "" || space == "" {
+		return LogSpec{}, true
+	}
+	rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
+	if err == nil {
+		bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
+	}
+	return LogSpec{
+		Log:    bmsg.Message,
+		Stream: "",
+		Time:   time.Now(),
+		Space:  space,
+		Docker: DockerSpec{ContainerId: ""},
+		Kubernetes: KubernetesSpec{
+			NamespaceName: space,
+			PodId:         "",
+			PodName:       "akkeris/build",
+			ContainerName: app,
+			Labels: LabelsSpec{
+				Name:            "",
+				PodTemplateHash: ""},
+			Host: ""},
+		Topic: space, Tag: ""}, false
+}
+
+

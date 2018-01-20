@@ -48,6 +48,9 @@ func SendMessage(message LogSpec) {
 
 	for _, route := range routes[proc.App+message.Topic] {
 		tag := proc.Type + "." + strings.Replace(strings.Replace(message.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1)
+		if strings.HasPrefix(message.Kubernetes.PodName, "akkeris/") {
+			tag = message.Kubernetes.PodName
+		}
 		var p = syslog.Packet{
 			Severity: syslog.SevInfo,
 			Facility: syslog.LogUser,
@@ -61,7 +64,7 @@ func SendMessage(message LogSpec) {
 	}
 }
 
-// Works for every topic other than __consumer_offsets and alamoweblogs.
+// Works for every topic other than __consumer_offsets, alamobuildlogs and alamoweblogs.
 func StartForwardingAppLogs(consumer *cluster.Consumer) {
 	var msg LogSpec
 	for {
@@ -90,6 +93,28 @@ func StartForwardingWebLogs(consumer *cluster.Consumer) {
 				messageFailedDecode++
 			} else {
 				SendMessage(msg)
+			}
+			consumer.MarkOffset(message, "")
+		}
+	}
+}
+
+// Only works for alamobuildlogs.
+func StartForwardingBuildLogs(consumer *cluster.Consumer) {
+	var msg BuildLogSpec
+	for {
+		select {
+		case message := <-consumer.Messages():
+			messagesReceived++
+			if err := json.Unmarshal(message.Value, &msg); err != nil {
+				messageFailedDecode++
+			} else {
+				logmsg, errd := ParseBuildLogMessage(msg)
+				if errd == true {
+					messageFailedDecode++
+				} else {
+					SendMessage(logmsg)
+				}
 			}
 			consumer.MarkOffset(message, "")
 		}
@@ -139,7 +164,7 @@ func GetSpacesToWatch(kafkaAddrs []string, kafkaGroup string) []string {
 		return nil
 	}
 	return Filter(spaces, func(v string) bool {
-		return v != "kube-system" && v != "__consumer_offsets" && v != "alamoweblogs" && !strings.HasPrefix(v, "subsystems")
+		return v != "kube-system" && v != "__consumer_offsets" && v != "alamoweblogs" && v != "alamobuildlogs" && !strings.HasPrefix(v, "subsystems")
 	})
 }
 
@@ -160,7 +185,6 @@ func GetDrainById(client *redis.Client, Id string) (*Route, error) {
 	}
 	return nil, errors.New("No such drain found.")
 }
-
 
 func ListLogDrains(client *redis.Client) func(martini.Params, render.Render) {
 	return func(params martini.Params, rr render.Render) {
@@ -353,11 +377,10 @@ func StartHttpShuttleServices(client *redis.Client, kafkaAddrs []string, kafkaPr
 	m.Delete("/apps/:app_key/log-drains/:id", DeleteLogDrain(client))
 	m.Get("/apps/:app_key/log-drains/:id", GetLogDrain(client))
 	m.Get("/octhc", HealthCheck(client, kafkaAddrs))
-	// Private end point to create new events within the log stream that are alamo-app-controller specifc.
+	// Private end point to create new events within the log stream that are controller-api specifc.
 	m.Post("/log-events", binding.Json(LogSpec{}), CreateLogEvent(kafkaProducer))
 	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
 }
-
 
 func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, kafkaGroup string) {
 	routes = make(map[string][]Route)
@@ -373,6 +396,7 @@ func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, k
 	producer := CreateProducer(kafkaAddrs, kafkaGroup)
 	kafkaConsumer := CreateConsumerCluster(kafkaAddrs, kafkaGroup, spaces)
 	kafkaConsumerWeblogs := CreateConsumerCluster(kafkaAddrs, kafkaGroup, []string{"alamoweblogs"})
+	kafkaConsumerBuildlogs := CreateConsumerCluster(kafkaAddrs, kafkaGroup, []string{"alamobuildlogs"})
 
 	DumpToSyslog("Forwarding logs for spaces %s with group %s", spaces, kafkaGroup)
 
@@ -380,6 +404,7 @@ func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, k
 	defer producer.Close()
 	defer kafkaConsumer.Consumer.Close()
 	defer kafkaConsumerWeblogs.Consumer.Close()
+	defer kafkaConsumerBuildlogs.Consumer.Close()
 
 	// Start http services
 	go StartHttpShuttleServices(client, kafkaAddrs, producer, port)
@@ -389,6 +414,9 @@ func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, k
 
 	// Start listening to web logs
 	go StartForwardingWebLogs(kafkaConsumerWeblogs.Consumer)
+
+	// Start listening to web logs
+	go StartForwardingBuildLogs(kafkaConsumerBuildlogs.Consumer)
 
 	// Start drain tasks
 	go drains.InitUrlDrains()
