@@ -55,8 +55,9 @@ func Dial(kafkaGroup string, Url string) (*Drain, error) {
 			host = strings.Split(Url, "://")[1]
 		}
 
-		dest, err := syslog.Dial(kafkaGroup, network, host, nil, time.Second*60, time.Second*60, MaxLogSize)
+		dest, err := syslog.Dial(kafkaGroup, network, host, nil, time.Second*2, time.Second*4, MaxLogSize)
 		if err != nil {
+			fmt.Println(err)
 			return nil, fmt.Errorf("Unable to establish connection for: %s using %s to %s", Url, network, host)
 		}
 		if dest == nil {

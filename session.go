@@ -43,9 +43,10 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 								f.Flush()
 							}
 						}
-					} 
+					}
 				} else if message.Topic == "alamoweblogs" {
-					msg, err := ParseWebLogMessage(string(message.Value))
+					var msg LogSpec
+					err := ParseWebLogMessage(message.Value, &msg)
 					if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
 						if msg.Time.Unix() < last_date.Unix() {
 							msg.Time = time.Now()
