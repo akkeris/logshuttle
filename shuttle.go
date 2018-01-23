@@ -99,21 +99,15 @@ func StartForwardingWebLogs(consumer *cluster.Consumer) {
 
 // Only works for alamobuildlogs.
 func StartForwardingBuildLogs(consumer *cluster.Consumer) {
-	
 	for {
 		select {
 		case message := <-consumer.Messages():
-			var msg BuildLogSpec
+			var msg LogSpec
 			messagesReceived++
-			if err := json.Unmarshal(message.Value, &msg); err != nil {
+			if err := ParseBuildLogMessage(message.Value, &msg); err == true {
 				messageFailedDecode++
 			} else {
-				logmsg, errd := ParseBuildLogMessage(msg)
-				if errd == true {
-					messageFailedDecode++
-				} else {
-					SendMessage(logmsg)
-				}
+				SendMessage(msg)
 			}
 			consumer.MarkOffset(message, "")
 		}
