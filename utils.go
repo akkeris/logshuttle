@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"net/url"
@@ -240,41 +241,46 @@ func ParseWebLogMessage(data []byte, msg *LogSpec) (bool) {
 
 
 
-func ParseBuildLogMessage(bmsg BuildLogSpec) (LogSpec, bool) {
-	var app = ""
-	var space = ""
-
-	var splitAppName = strings.SplitN(bmsg.Metadata, "-", 2)
-	app = splitAppName[0]
-	if len(splitAppName) == 1 {
-		space = "default"
+func ParseBuildLogMessage(data []byte, msg *LogSpec) (bool) {
+	var bmsg BuildLogSpec
+	if err := json.Unmarshal(data, &bmsg); err != nil {
+		return true
 	} else {
-		space = splitAppName[1]
+		var app = ""
+		var space = ""
+
+		var splitAppName = strings.SplitN(bmsg.Metadata, "-", 2)
+		app = splitAppName[0]
+		if len(splitAppName) == 1 {
+			space = "default"
+		} else {
+			space = splitAppName[1]
+		}
+		
+		if app == "" || space == "" {
+			return true
+		}
+		
+		rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
+		if err == nil {
+			bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
+		}
+
+		msg.Log = bmsg.Message
+		msg.Stream = ""
+		msg.Time = time.Now()
+		msg.Space = space
+		msg.Kubernetes.NamespaceName = space
+		msg.Kubernetes.PodId = ""
+		msg.Kubernetes.PodName = "akkeris/build"
+		msg.Kubernetes.ContainerName = app
+		msg.Kubernetes.Labels.Name = ""
+		msg.Kubernetes.Labels.PodTemplateHash = ""
+		msg.Kubernetes.Host = ""
+		msg.Topic = space
+		msg.Tag = ""
+		return false
 	}
-	
-	if app == "" || space == "" {
-		return LogSpec{}, true
-	}
-	rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
-	if err == nil {
-		bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
-	}
-	return LogSpec{
-		Log:    bmsg.Message,
-		Stream: "",
-		Time:   time.Now(),
-		Space:  space,
-		Docker: DockerSpec{ContainerId: ""},
-		Kubernetes: KubernetesSpec{
-			NamespaceName: space,
-			PodId:         "",
-			PodName:       "akkeris/build",
-			ContainerName: app,
-			Labels: LabelsSpec{
-				Name:            "",
-				PodTemplateHash: ""},
-			Host: ""},
-		Topic: space, Tag: ""}, false
 }
 
 

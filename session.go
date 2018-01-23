@@ -13,7 +13,6 @@ import (
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
 	"strconv"
-	"fmt"
 )
 
 func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspace []string, res http.ResponseWriter, group string) {
@@ -52,7 +51,7 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 							msg.Time = time.Now()
 						}
 						last_date = msg.Time
-						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " alamo/router: " + msg.Log + "\n"))
+						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/router: " + msg.Log + "\n"))
 						if err2 != nil {
 							return
 						} else if f, ok := res.(http.Flusher); ok {
@@ -60,23 +59,19 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 						}
 					} 
 				} else if message.Topic == "alamobuildlogs" {
-					var bmsg BuildLogSpec
-					if err := json.Unmarshal(message.Value, &bmsg); err == nil {
-						logmsg, errd := ParseBuildLogMessage(bmsg)
-						if errd == false && IsAppMatch(logmsg.Kubernetes.ContainerName, app) && logmsg.Topic == space {
-							if logmsg.Time.Unix() < last_date.Unix() {
-								logmsg.Time = time.Now()
-							}
-							last_date = logmsg.Time
-							_, err2 := res.Write([]byte(logmsg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/build: " + logmsg.Log + "\n"))
-							if err2 != nil {
-								return
-							} else if f, ok := res.(http.Flusher); ok {
-								f.Flush()
-							}
+					var msg LogSpec
+					err := ParseBuildLogMessage(message.Value, &msg)
+					if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
+						if msg.Time.Unix() < last_date.Unix() {
+							msg.Time = time.Now()
 						}
-					} else {
-						fmt.Println("ERROR: Failed to parse build log")
+						last_date = msg.Time
+						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/build: " + msg.Log + "\n"))
+						if err2 != nil {
+							return
+						} else if f, ok := res.(http.Flusher); ok {
+							f.Flush()
+						}
 					}
 				} 
 				cluster.Consumer.MarkOffset(message, "")
