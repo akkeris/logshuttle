@@ -10,7 +10,7 @@ import (
 	"time"
 	"net/http"
 	"github.com/trevorlinton/remote_syslog2/syslog"
-	"github.com/Shopify/sarama"
+	"github.com/trevorlinton/sarama"
 	"github.com/bsm/sarama-cluster"
 	"gopkg.in/redis.v4"
 	"github.com/go-martini/martini"
@@ -45,7 +45,6 @@ func SendMessage(message LogSpec) {
 		var components = strings.SplitN(message.Kubernetes.ContainerName, "--", 2)
 		proc = Process{App: components[0], Type: components[1]}
 	}
-
 	for _, route := range routes[proc.App+message.Topic] {
 		tag := proc.Type + "." + strings.Replace(strings.Replace(message.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1)
 		if strings.HasPrefix(message.Kubernetes.PodName, "akkeris/") {
@@ -66,10 +65,10 @@ func SendMessage(message LogSpec) {
 
 // Works for every topic other than __consumer_offsets, alamobuildlogs and alamoweblogs.
 func StartForwardingAppLogs(consumer *cluster.Consumer) {
-	var msg LogSpec
 	for {
 		select {
 		case message := <-consumer.Messages():
+			var msg LogSpec
 			messagesReceived++
 			if err := json.Unmarshal(message.Value, &msg); err != nil {
 				messageFailedDecode++
@@ -86,10 +85,9 @@ func StartForwardingWebLogs(consumer *cluster.Consumer) {
 	for {
 		select {
 		case message := <-consumer.Messages():
+			var msg LogSpec
 			messagesReceived++
-			// See if this is a http routing message
-			msg, err := ParseWebLogMessage(string(message.Value))
-			if err == true {
+			if err := ParseWebLogMessage(message.Value, &msg); err == true {
 				messageFailedDecode++
 			} else {
 				SendMessage(msg)
@@ -101,20 +99,15 @@ func StartForwardingWebLogs(consumer *cluster.Consumer) {
 
 // Only works for alamobuildlogs.
 func StartForwardingBuildLogs(consumer *cluster.Consumer) {
-	var msg BuildLogSpec
 	for {
 		select {
 		case message := <-consumer.Messages():
+			var msg LogSpec
 			messagesReceived++
-			if err := json.Unmarshal(message.Value, &msg); err != nil {
+			if err := ParseBuildLogMessage(message.Value, &msg); err == true {
 				messageFailedDecode++
 			} else {
-				logmsg, errd := ParseBuildLogMessage(msg)
-				if errd == true {
-					messageFailedDecode++
-				} else {
-					SendMessage(logmsg)
-				}
+				SendMessage(msg)
 			}
 			consumer.MarkOffset(message, "")
 		}
@@ -324,7 +317,7 @@ func CreateConsumer(kafkaAddrs []string, consumerGroup string) sarama.Consumer {
 	config := sarama.NewConfig()
 	config.Net.TLS.Enable = false
 	config.ClientID = consumerGroup
-	config.Consumer.Return.Errors = true
+	config.Consumer.Return.Errors = false
 
 	err := config.Validate()
 	if err != nil {
@@ -342,7 +335,7 @@ func CreateProducer(kafkaAddrs []string, consumerGroup string) sarama.AsyncProdu
 	config := sarama.NewConfig()
 
 	config.Net.TLS.Enable = false
-	config.Producer.Return.Errors = true
+	config.Producer.Return.Errors = false
 	config.ClientID = consumerGroup
 
 	err := config.Validate()
@@ -428,7 +421,6 @@ func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, k
 		messagesReceived = 0
 		messageFailedDecode = 0
 		RefreshRoutes(client, kafkaGroup)
-
 		<-t.C
 	}
 }

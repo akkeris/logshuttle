@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"net/url"
@@ -37,6 +38,8 @@ func CreateConsumerCluster(kafkaAddrs []string, consumerGroup string, topics []s
 	config.Net.MaxOpenRequests = 200        // allow up to 200 open requests at a time, default is 5
 	config.Net.KeepAlive = time.Second * 30 // keep the connection open for 30 seconds before we hang up. default is no keep alive.
 	config.Group.PartitionStrategy = cluster.StrategyRoundRobin
+	config.Consumer.Return.Errors = false
+	config.Group.Return.Notifications = false
 
 	client, err := cluster.NewClient(kafkaAddrs, config)
 	if err != nil {
@@ -183,15 +186,16 @@ func RandomString(n int) string {
 	return string(b)
 }
 
-func ParseWebLogMessage(message string) (LogSpec, bool) {
+func ParseWebLogMessage(data []byte, msg *LogSpec) (bool) {
 	var app = ""
 	var space = ""
 	var reformattedMessage = ""
+	var message = string(data)
 
 	for _, block := range strings.Fields(message) {
 		var value = strings.SplitN(block, "=", 2)
 		if len(value) < 2 {
-			return LogSpec{}, true
+			return true
 		} else {
 			if value[0] == "hostname" {
 				urls := strings.Split(value[1], ".")
@@ -217,63 +221,66 @@ func ParseWebLogMessage(message string) (LogSpec, bool) {
 		}
 	}
 	if app == "" || space == "" {
-		return LogSpec{}, true
+		return true
 	}
-	return LogSpec{
-		Log:    reformattedMessage,
-		Stream: "",
-		Time:   time.Now(),
-		Space:  space,
-		Docker: DockerSpec{ContainerId: ""},
-		Kubernetes: KubernetesSpec{
-			NamespaceName: space,
-			PodId:         "",
-			PodName:       "akkeris/router",
-			ContainerName: app,
-			Labels: LabelsSpec{
-				Name:            "",
-				PodTemplateHash: ""},
-			Host: ""},
-		Topic: space, Tag: ""}, false
+	msg.Log = reformattedMessage
+	msg.Stream = ""
+	msg.Time = time.Now()
+	msg.Space = space
+	msg.Kubernetes.NamespaceName = space
+	msg.Kubernetes.PodId = ""
+	msg.Kubernetes.PodName = "akkeris/router"
+	msg.Kubernetes.ContainerName = app
+	msg.Kubernetes.Labels.Name = ""
+	msg.Kubernetes.Labels.PodTemplateHash = ""
+	msg.Kubernetes.Host = ""
+	msg.Topic = space
+	msg.Tag = ""
+	return false
 }
 
 
 
-func ParseBuildLogMessage(bmsg BuildLogSpec) (LogSpec, bool) {
-	var app = ""
-	var space = ""
-
-	var splitAppName = strings.SplitN(bmsg.Metadata, "-", 2)
-	app = splitAppName[0]
-	if len(splitAppName) == 1 {
-		space = "default"
+func ParseBuildLogMessage(data []byte, msg *LogSpec) (bool) {
+	var bmsg BuildLogSpec
+	if err := json.Unmarshal(data, &bmsg); err != nil {
+		return true
 	} else {
-		space = splitAppName[1]
+		var app = ""
+		var space = ""
+
+		var splitAppName = strings.SplitN(bmsg.Metadata, "-", 2)
+		app = splitAppName[0]
+		if len(splitAppName) == 1 {
+			space = "default"
+		} else {
+			space = splitAppName[1]
+		}
+		
+		if app == "" || space == "" {
+			return true
+		}
+		
+		rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
+		if err == nil {
+			bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
+		}
+
+		msg.Log = bmsg.Message
+		msg.Stream = ""
+		msg.Time = time.Now()
+		msg.Space = space
+		msg.Kubernetes.NamespaceName = space
+		msg.Kubernetes.PodId = ""
+		msg.Kubernetes.PodName = "akkeris/build"
+		msg.Kubernetes.ContainerName = app
+		msg.Kubernetes.Labels.Name = ""
+		msg.Kubernetes.Labels.PodTemplateHash = ""
+		msg.Kubernetes.Host = ""
+		msg.Topic = space
+		msg.Tag = ""
+		return false
 	}
-	
-	if app == "" || space == "" {
-		return LogSpec{}, true
-	}
-	rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
-	if err == nil {
-		bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
-	}
-	return LogSpec{
-		Log:    bmsg.Message,
-		Stream: "",
-		Time:   time.Now(),
-		Space:  space,
-		Docker: DockerSpec{ContainerId: ""},
-		Kubernetes: KubernetesSpec{
-			NamespaceName: space,
-			PodId:         "",
-			PodName:       "akkeris/build",
-			ContainerName: app,
-			Labels: LabelsSpec{
-				Name:            "",
-				PodTemplateHash: ""},
-			Host: ""},
-		Topic: space, Tag: ""}, false
 }
 
 
