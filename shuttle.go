@@ -468,7 +468,6 @@ func StartShuttleServices(client *Storage, kafkaAddrs []string, port int, kafkaG
 
 	t := time.NewTicker(time.Second * 60)
 	for {
-		// TODO: add amount of go channels
 		log.Printf("[metrics] count#logs_sent=%d count#logs_received=%d count#failed_decode=%d count#goroutines=%d\n", messagesSent, messagesReceived, messageFailedDecode, runtime.NumGoroutine())
 		drains.PrintMetrics()
 		messagesSent = 0
