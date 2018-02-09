@@ -9,24 +9,30 @@ import (
 	"strings"
 	"time"
 	"net/http"
-	"github.com/trevorlinton/remote_syslog2/syslog"
+	"./syslog"
 	"github.com/trevorlinton/sarama"
 	"github.com/bsm/sarama-cluster"
-	"gopkg.in/redis.v4"
 	"github.com/go-martini/martini"
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
 	"strconv"
+	"sync"
+	"runtime"
 )
+
+// TODO: Support tokens
+// TODO: Connect on demand (but deal with bad hosts will be tricky)
+// TODO: Mark in stoage errors connecting
 
 var messagesSent = 0
 var messagesReceived = 0
 var messageFailedDecode = 0
 
 // Max syslog length is 100kb, we'll be a bit more conservative and accept 99kb.
+var testMode = false
 var routes map[string][]Route
-
+var routex = &sync.Mutex{}
 
 func AddLogsToApp(producer sarama.AsyncProducer, message LogSpec) error {
 	bytes, err := json.Marshal(message)
@@ -45,15 +51,24 @@ func SendMessage(message LogSpec) {
 		var components = strings.SplitN(message.Kubernetes.ContainerName, "--", 2)
 		proc = Process{App: components[0], Type: components[1]}
 	}
-	for _, route := range routes[proc.App+message.Topic] {
+
+	routex.Lock()
+	r := routes[proc.App+message.Topic]
+	routex.Unlock()
+
+	for _, route := range r {
 		tag := proc.Type + "." + strings.Replace(strings.Replace(message.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1)
 		if strings.HasPrefix(message.Kubernetes.PodName, "akkeris/") {
 			tag = message.Kubernetes.PodName
 		}
+		var host = proc.App + "-" + message.Topic
+		if testMode {
+			host = "logshuttle-test"
+		}
 		var p = syslog.Packet{
 			Severity: syslog.SevInfo,
 			Facility: syslog.LogUser,
-			Hostname: proc.App + "-" + message.Topic,
+			Hostname: host, 
 			Tag:      tag,
 			Time:     message.Time,
 			Message:  KubernetesToHumanReadable(message.Log),
@@ -114,21 +129,22 @@ func StartForwardingBuildLogs(consumer *cluster.Consumer) {
 	}
 }
 
-func RefreshRoutes(client *redis.Client, kafkaGroup string) {
-	routesPkg, err := client.LRange("routes", 0, -1).Result()
+func RefreshRoutes(client *Storage, kafkaGroup string) {
+	routesPkg, err := (*client).GetRoutes()
 	if err != nil {
-		log.Fatalf("error: cannot obtain routes from redis: %s", err)
+		log.Fatalf("[shuttle] error: cannot obtain routes: %s", err)
 		return
 	}
 
-	var r Route
-	var found = false
-
+	wg := new(sync.WaitGroup)
 	for _, route := range routesPkg {
+		var r Route
+		var found = false
 		if err := json.Unmarshal([]byte(route), &r); err != nil {
-			DumpToSyslog("Bad route packet found in redis: %s", err)
+			log.Printf("[shuttle] Bad route packet found: %s\n", err)
 		} else {
 			found = false
+			routex.Lock()
 			if routes[r.App+r.Space] != nil {
 				for _, extr := range routes[r.App+r.Space] {
 					if extr.DestinationUrl == r.DestinationUrl {
@@ -136,40 +152,58 @@ func RefreshRoutes(client *redis.Client, kafkaGroup string) {
 					}
 				}
 			}
-			if found == false {
-				d, err := drains.Dial(kafkaGroup, r.DestinationUrl)
-				if err != nil {
-					DumpToSyslog("Unable to process route %s", r.DestinationUrl)
-				} else {
-					r.Destination = d
-					routes[r.App+r.Space] = append(routes[r.App+r.Space], r)
-					DumpToSyslog("Adding route: %s -> %s ", route, r.DestinationUrl)
-				}
+			routex.Unlock()
+
+			// Explicitly disallow the test case url.
+			if found == false && r.DestinationUrl != "syslog+tls://logs.apps.com:40841" {
+				wg.Add(1)
+				go func() {
+					d, err := drains.Dial(kafkaGroup, r.DestinationUrl)
+					if err == nil {
+						var duplicate = false
+						r.Destination = d
+						routex.Lock()
+						for _, sr := range routes[r.App+r.Space] {
+							if sr.DestinationUrl == r.DestinationUrl {
+								duplicate = true
+							}
+						}
+						if duplicate == false {
+							routes[r.App+r.Space] = append(routes[r.App+r.Space], r)
+							log.Printf("[shuttle] Adding route: %s-%s -> %s\n", r.App, r.Space, r.DestinationUrl)
+						} else {
+							log.Printf("[shuttle] Not adding duplicate route: %s-%s -> %s\n", r.App, r.Space, r.DestinationUrl)
+						}
+						routex.Unlock()
+					}
+					wg.Done()
+				}()
 			}
 		}
 	}
+	wg.Wait()
 }
 
 func GetSpacesToWatch(kafkaAddrs []string, kafkaGroup string) []string {
 	spaces, err := GetKafkaTopics(kafkaAddrs, kafkaGroup)
 	if err != nil {
-		log.Fatalf("error: cannot get spaces: %s", err)
+		log.Fatalf("[shuttle] error: cannot get spaces: %s", err)
 		return nil
 	}
 	return Filter(spaces, func(v string) bool {
-		return v != "kube-system" && v != "__consumer_offsets" && v != "alamoweblogs" && v != "alamobuildlogs" && !strings.HasPrefix(v, "subsystems")
+		return v != "kube-system" && v != "alamoweblogs" && v != "alamobuildlogs" && !strings.HasPrefix(v, "subsystems-") && !strings.HasSuffix(v, "-subsystems") && !strings.HasPrefix(v, ".") && !strings.HasPrefix(v, "_")
 	})
 }
 
-func GetDrainById(client *redis.Client, Id string) (*Route, error) {
-	routes_pkg, err := client.LRange("routes", 0, -1).Result()
+func GetDrainById(client *Storage, Id string) (*Route, error) {
+	routes_pkg, err := (*client).GetRoutes()
 	if err != nil {
 		return nil, err
 	}
 	for _, route := range routes_pkg {
 		var r Route
 		if err := json.Unmarshal([]byte(route), &r); err != nil {
-			DumpToSyslog("Bad route packet found in redis: %s", err)
+			log.Printf("[shuttle] Bad route packet found: %s\n", err)
 		} else {
 			if r.Id == Id {
 				return &r, nil
@@ -179,7 +213,7 @@ func GetDrainById(client *redis.Client, Id string) (*Route, error) {
 	return nil, errors.New("No such drain found.")
 }
 
-func ListLogDrains(client *redis.Client) func(martini.Params, render.Render) {
+func ListLogDrains(client *Storage) func(martini.Params, render.Render) {
 	return func(params martini.Params, rr render.Render) {
 		if params["app_key"] == "" {
 			ReportInvalidRequest(rr)
@@ -194,7 +228,7 @@ func ListLogDrains(client *redis.Client) func(martini.Params, render.Render) {
 			return
 		}
 
-		routes_pkg, err := client.LRange("routes", 0, -1).Result()
+		routes_pkg, err := (*client).GetRoutes()
 		if err != nil {
 			ReportError(rr, err)
 			return
@@ -231,7 +265,7 @@ func CreateLogEvent(kafkaProducer sarama.AsyncProducer) func(martini.Params, Log
 	}
 }
 
-func CreateLogDrain(client *redis.Client) func(martini.Params, LogDrainCreateRequest, binding.Errors, render.Render) {
+func CreateLogDrain(client *Storage) func(martini.Params, LogDrainCreateRequest, binding.Errors, render.Render) {
 	return func(params martini.Params, opts LogDrainCreateRequest, berr binding.Errors, r render.Render) {
 		if berr != nil {
 			ReportInvalidRequest(r)
@@ -258,12 +292,16 @@ func CreateLogDrain(client *redis.Client) func(martini.Params, LogDrainCreateReq
 			ReportError(r, err)
 			return
 		}
-		client.RPush("routes", bytes)
+		err = (*client).AddRoute(string(bytes))
+		if err != nil {
+			ReportError(r, err)
+			return
+		}
 		r.JSON(201, LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: id.String(), Token: app + "-" + space, Url: opts.Url})
 	}
 }
 
-func DeleteLogDrain(client *redis.Client) func(martini.Params, render.Render) {
+func DeleteLogDrain(client *Storage) func(martini.Params, render.Render) {
 	return func(params martini.Params, r render.Render) {
 		if params["app_key"] == "" {
 			ReportInvalidRequest(r)
@@ -286,12 +324,17 @@ func DeleteLogDrain(client *redis.Client) func(martini.Params, render.Render) {
 			ReportError(r, err)
 			return
 		}
-		client.LRem("routes", 1, rb)
+		err = (*client).RemoveRoute(string(rb))
+		if err != nil {
+			ReportError(r, err)
+			return
+		}
+		
 		r.JSON(200, LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
 	}
 }
 
-func GetLogDrain(client *redis.Client) func(martini.Params, render.Render) {
+func GetLogDrain(client *Storage) func(martini.Params, render.Render) {
 	return func(params martini.Params, r render.Render) {
 		if params["app_key"] == "" {
 			ReportInvalidRequest(r)
@@ -357,7 +400,7 @@ func GetKafkaTopics(kafkaAddrs []string, consumerGroup string) ([]string, error)
 	return topics, err
 }
 
-func StartHttpShuttleServices(client *redis.Client, kafkaAddrs []string, kafkaProducer sarama.AsyncProducer, port int) {
+func StartHttpShuttleServices(client *Storage, kafkaAddrs []string, kafkaProducer sarama.AsyncProducer, port int) {
 	m := martini.Classic()
 	m.Use(func(res http.ResponseWriter, req *http.Request) {
 		if req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && req.URL.Path != "/octhc" {
@@ -375,14 +418,23 @@ func StartHttpShuttleServices(client *redis.Client, kafkaAddrs []string, kafkaPr
 	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
 }
 
-func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, kafkaGroup string) {
-	routes = make(map[string][]Route)
+func StartShuttleServices(client *Storage, kafkaAddrs []string, port int, kafkaGroup string) {
 
-	// Load redis and routes
+	if os.Getenv("TEST_MODE") != "" {
+		testMode = true
+	}
+
+	routex = &sync.Mutex{}
+	routex.Lock()
+	routes = make(map[string][]Route)
+	routex.Unlock()
+
+	// Load routes
+	drains.InitSyslogDrains()
 	RefreshRoutes(client, kafkaGroup)
 
 	// Start kafka listening.
-	DumpToSyslog("Connecting to %s", strings.Join(kafkaAddrs, ","))
+	log.Printf("[shuttle] Connecting to %s\n", strings.Join(kafkaAddrs, ","))
 
 	// Create producer and consumers..
 	spaces := GetSpacesToWatch(kafkaAddrs, kafkaGroup)
@@ -391,7 +443,7 @@ func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, k
 	kafkaConsumerWeblogs := CreateConsumerCluster(kafkaAddrs, kafkaGroup, []string{"alamoweblogs"})
 	kafkaConsumerBuildlogs := CreateConsumerCluster(kafkaAddrs, kafkaGroup, []string{"alamobuildlogs"})
 
-	DumpToSyslog("Forwarding logs for spaces %s with group %s", spaces, kafkaGroup)
+	log.Printf("[shuttle] Forwarding logs for spaces %s with group %s\n", spaces, kafkaGroup)
 
 	// ensure close happens at some point.
 	defer producer.Close()
@@ -416,7 +468,8 @@ func StartShuttleServices(client *redis.Client, kafkaAddrs []string, port int, k
 
 	t := time.NewTicker(time.Second * 60)
 	for {
-		DumpToSyslog("metrics count#logs_sent=%d count#logs_received=%d count#failed_decode=%d", messagesSent, messagesReceived, messageFailedDecode)
+		log.Printf("[metrics] count#logs_sent=%d count#logs_received=%d count#failed_decode=%d count#goroutines=%d\n", messagesSent, messagesReceived, messageFailedDecode, runtime.NumGoroutine())
+		drains.PrintMetrics()
 		messagesSent = 0
 		messagesReceived = 0
 		messageFailedDecode = 0

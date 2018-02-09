@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"encoding/json"
 	"time"
-	"gopkg.in/redis.v4"
 	"github.com/go-martini/martini"
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
@@ -79,7 +78,7 @@ func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspac
 	}
 }
 
-func CreateLogSession(client *redis.Client) func(martini.Params, LogSession, binding.Errors, render.Render) {
+func CreateLogSession(client *Storage) func(martini.Params, LogSession, binding.Errors, render.Render) {
 	return func(params martini.Params, logSess LogSession, berr binding.Errors, r render.Render) {
 		if berr != nil {
 			ReportInvalidRequest(r)
@@ -95,7 +94,7 @@ func CreateLogSession(client *redis.Client) func(martini.Params, LogSession, bin
 			ReportError(r, err)
 			return
 		}
-		s, err := client.Set(id.String(), bytes, time.Minute*5).Result()
+		s, err := (*client).Set(id.String(), string(bytes), time.Minute*5)
 		if err != nil {
 			ReportError(r, err)
 			return
@@ -105,11 +104,11 @@ func CreateLogSession(client *redis.Client) func(martini.Params, LogSession, bin
 	}
 }
 
-func ReadLogSession(client *redis.Client, kafkaAddrs []string) func(http.ResponseWriter, *http.Request, martini.Params) {
+func ReadLogSession(client *Storage, kafkaAddrs []string) func(http.ResponseWriter, *http.Request, martini.Params) {
 	return func(res http.ResponseWriter, req *http.Request, params martini.Params) {
-		logSessionString, err := client.Get(params["id"]).Result()
+		logSessionString, err := (*client).Get(params["id"])
 		if err != nil {
-			DumpToSyslog("Cannot find id %s", params["id"])
+			log.Printf("Cannot find id %s\n", params["id"])
 			res.WriteHeader(404)
 			return
 		}
@@ -124,7 +123,7 @@ func ReadLogSession(client *redis.Client, kafkaAddrs []string) func(http.Respons
 	}
 }
 
-func StartSessionServices(client *redis.Client, kafkaAddrs []string, port int) {
+func StartSessionServices(client *Storage, kafkaAddrs []string, port int) {
 	m := martini.Classic()
 	m.Use(func(res http.ResponseWriter, req *http.Request) {
 		if req.Method == "POST" && req.URL.Path == "/log-sessions" && req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") {
