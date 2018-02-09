@@ -6,16 +6,13 @@ import (
 	"log"
 	"math/rand"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 	"net/http"
 	"github.com/martini-contrib/render"
 	"github.com/bsm/sarama-cluster"
-	"gopkg.in/redis.v4"
 	"github.com/go-martini/martini"
-	"github.com/trevorlinton/remote_syslog2/syslog"
 )
 
 // Boilerplate random string generator
@@ -28,7 +25,6 @@ const (
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
 
-var ourLogger *syslog.Logger
 var serverName string
 
 func CreateConsumerCluster(kafkaAddrs []string, consumerGroup string, topics []string) KafkaConsumer {
@@ -58,53 +54,13 @@ func CreateConsumerCluster(kafkaAddrs []string, consumerGroup string, topics []s
 	return KafkaConsumer{Consumer: consumer, Config: config, Client: client}
 }
 
-func ConnectOurLogging(kafkaGroup string, syslogger string) {
-	serverName = kafkaGroup
-	if os.Getenv("TEST_MODE") == "" {
-		log.Printf("Connecting to logger.")
-		dest, err := syslog.Dial(kafkaGroup,
-			"tls", syslogger, nil, time.Second*60, time.Second*60, 99990)
-		if err != nil {
-			log.Fatalf("error: cannot connect to our logging destination: %s", err)
-		}
-		log.Printf("Logger successfully connected.")
-		ourLogger = dest
-	}
-}
-
-func GetRedis() *redis.Client {
-	client := redis.NewClient(&redis.Options{
-		Addr:     strings.Replace(os.Getenv("REDIS_URL"), "redis://", "", 1),
-		Password: "",
-		DB:       0,
-	})
-	return client
-}
-
 func ReportInvalidRequest(r render.Render) {
 	r.JSON(400, "Malformed Request")
 }
 
 func ReportError(r render.Render, err error) {
-	DumpToSyslog("error: %s", err)
+	fmt.Printf("error: %s", err)
 	r.JSON(500, map[string]interface{}{"message": "Internal Server Error"})
-}
-
-func DumpToSyslog(format string, v ...interface{}) {
-	var msg = fmt.Sprintf(format, v...)
-	var p = syslog.Packet{
-		Severity: syslog.LogUser,
-		Facility: syslog.SevInfo,
-		Hostname: serverName + "-default-" + os.Getenv("ENV"),
-		Tag:      "web",
-		Time:     time.Now(),
-		Message:  msg,
-	}
-	if os.Getenv("TEST_MODE") != "" {
-		log.Printf("%s", p.Generate(1024*20))
-	} else {
-		ourLogger.Packets <- p
-	}
 }
 
 func Filter(vs []string, f func(string) bool) []string {
@@ -122,11 +78,11 @@ func IsAppMatch(potential string, app_name string) bool {
 }
 
 
-func HealthCheck(client *redis.Client, kafkaAddrs []string) func(http.ResponseWriter, *http.Request, martini.Params) {
+func HealthCheck(client *Storage, kafkaAddrs []string) func(http.ResponseWriter, *http.Request, martini.Params) {
 	return func(res http.ResponseWriter, req *http.Request, params martini.Params) {
-		_, err := client.Info("all").Result()
+		err := (*client).HealthCheck()
 		if err != nil {
-			DumpToSyslog("error: %s", err)
+			fmt.Printf("error: %s", err)
 			res.WriteHeader(200)
 			res.Write([]byte("overall_status=bad,redis_check=failed"))
 		} else {

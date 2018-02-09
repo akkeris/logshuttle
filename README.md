@@ -4,8 +4,6 @@
 
 You may need to run `git config --global http.https://gopkg.in.followRedirects true` as golang has an issue following redirects on gopkg.in.
 
-**Important** Never shuttle the logs for the actual log shuttle, this may result in an infinite loop if theres an error in routing the logs!
-
 - **RUN_SESSION** - Indicates if we wish to use the log session end point rather than the log shuttle end point (See Log Session below for rational), if you're looking to shuttle logs do not enable this. If you do want a log session end point (and a log session end point only) set this to 1.  Note enabling this will disable the log shuttle end point.  These two end points are mutually exclusive due to the burden it puts on the app and the completely separate types of workloads shuttling vs. sessions need to do.
 
 ### Storage ###
@@ -20,9 +18,10 @@ You may need to run `git config --global http.https://gopkg.in.followRedirects t
 
 - **KAFKA_HOSTS** - The comma delimited list of hosts (and optionally port concatenated with a : proceeding the host, e.g., host:port) of the kafka instances (not the zookeepers), to connect to.  Each topic must be a "space", the values in the topic must be the kubernetes JSON log structure. (see below).
 - **PORT** - Defaults to 5000, the port to listen to for API calls.
-- **SYSLOG** - The default syslog end point for the log shuttle's logs. 
 
 ### Incoming Log Structure ###
+
+### App Log Structure ###
 
 The incoming value for all messages must be (standard for kubernetes) the following:
 
