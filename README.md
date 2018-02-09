@@ -51,7 +51,7 @@ The pod_name should be an "app-instance-friendly-id", e.g., a friendly id to des
 
 ## Usage ##
 
-This API should sit behind the alamo-app-controller process, it should not be hit directly expect for testing.
+This API should sit behind the alamo-app-controller process, it should not be hit directly except for testing.
 
 ## API General Information ##
 
