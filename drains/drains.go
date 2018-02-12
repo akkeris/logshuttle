@@ -7,7 +7,6 @@ import (
 	"time"
 	"strconv"
 	"strings"
-	"log"
 	"sync"
 	"fmt"
 )
@@ -75,7 +74,7 @@ func Dial(kafkaGroup string, Url string) (*Drain, error) {
 			bad_hosts[Url] = true
 			bad_hosts_mutex.Unlock()
 			pool_mutex.Unlock()
-			log.Printf("[drains] Unable to process route (%s): %s\n", Url, err)
+			fmt.Printf("[drains] Unable to process route (%s): %s\n", Url, err)
 			return nil, err
 		}
 
@@ -114,7 +113,7 @@ func (l *Drain) Drain() {
 		req.Header.Add("Content-Type", "application/logplex-1")
 		client.Do(req)
 	} else {
-		log.Printf("[drains] Error getting a drain: %s", err);
+		fmt.Printf("[drains] Error getting a drain: %s", err);
 	}
 }
 
