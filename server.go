@@ -2,19 +2,18 @@ package main
 
 import (
 	"os"
-	"log"
+	"fmt"
 	"strings"
 	"strconv"
 	"net/http"
 	"net/http/pprof"
-
 )
 
 func main() {
 	var kafkaGroup = "logshuttle"
 	// Get kafka group for testing.
 	if os.Getenv("TEST_MODE") != "" {
-		log.Printf("Using kafka group logshuttle-testing for testing purposes...")
+		fmt.Printf("Using kafka group logshuttle-testing for testing purposes...\n")
 		kafkaGroup = "logshuttletest"
 	}
 
@@ -34,7 +33,7 @@ func main() {
 
 	if os.Getenv("PROFILE") != "" {
 		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
+			fmt.Println(http.ListenAndServe("localhost:6060", nil))
 		  	http.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
 		  	http.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 		  	http.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))

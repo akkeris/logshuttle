@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"strings"
 	"net/http"
@@ -94,12 +94,11 @@ func CreateLogSession(client *Storage) func(martini.Params, LogSession, binding.
 			ReportError(r, err)
 			return
 		}
-		s, err := (*client).Set(id.String(), string(bytes), time.Minute*5)
+		_, err = (*client).Set(id.String(), string(bytes), time.Minute*5)
 		if err != nil {
 			ReportError(r, err)
 			return
 		}
-		log.Printf(s)
 		r.JSON(201, map[string]interface{}{"id": id.String()})
 	}
 }
@@ -108,7 +107,7 @@ func ReadLogSession(client *Storage, kafkaAddrs []string) func(http.ResponseWrit
 	return func(res http.ResponseWriter, req *http.Request, params martini.Params) {
 		logSessionString, err := (*client).Get(params["id"])
 		if err != nil {
-			log.Printf("Cannot find id %s\n", params["id"])
+			fmt.Printf("Cannot find id %s\n", params["id"])
 			res.WriteHeader(404)
 			return
 		}

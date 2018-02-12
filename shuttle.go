@@ -5,6 +5,7 @@ import (
 	"errors"
 	"encoding/json"
 	"log"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -141,7 +142,7 @@ func RefreshRoutes(client *Storage, kafkaGroup string) {
 		var r Route
 		var found = false
 		if err := json.Unmarshal([]byte(route), &r); err != nil {
-			log.Printf("[shuttle] Bad route packet found: %s\n", err)
+			fmt.Printf("[shuttle] Bad route packet found: %s\n", err)
 		} else {
 			found = false
 			routex.Lock()
@@ -170,9 +171,9 @@ func RefreshRoutes(client *Storage, kafkaGroup string) {
 						}
 						if duplicate == false {
 							routes[r.App+r.Space] = append(routes[r.App+r.Space], r)
-							log.Printf("[shuttle] Adding route: %s-%s -> %s\n", r.App, r.Space, r.DestinationUrl)
+							fmt.Printf("[shuttle] Adding route: %s-%s -> %s\n", r.App, r.Space, r.DestinationUrl)
 						} else {
-							log.Printf("[shuttle] Not adding duplicate route: %s-%s -> %s\n", r.App, r.Space, r.DestinationUrl)
+							fmt.Printf("[shuttle] Not adding duplicate route: %s-%s -> %s\n", r.App, r.Space, r.DestinationUrl)
 						}
 						routex.Unlock()
 					}
@@ -188,10 +189,15 @@ func GetSpacesToWatch(kafkaAddrs []string, kafkaGroup string) []string {
 	spaces, err := GetKafkaTopics(kafkaAddrs, kafkaGroup)
 	if err != nil {
 		log.Fatalf("[shuttle] error: cannot get spaces: %s", err)
-		return nil
 	}
 	return Filter(spaces, func(v string) bool {
-		return v != "kube-system" && v != "alamoweblogs" && v != "alamobuildlogs" && !strings.HasPrefix(v, "subsystems-") && !strings.HasSuffix(v, "-subsystems") && !strings.HasPrefix(v, ".") && !strings.HasPrefix(v, "_")
+		return 	v != "kube-system" && 
+				v != "alamoweblogs" && 
+				v != "alamobuildlogs" && 
+				!strings.HasPrefix(v, "subsystems-") && 
+				!strings.HasSuffix(v, "-subsystems") && 
+				!strings.HasPrefix(v, ".") && 
+				!strings.HasPrefix(v, "_")
 	})
 }
 
@@ -203,7 +209,7 @@ func GetDrainById(client *Storage, Id string) (*Route, error) {
 	for _, route := range routes_pkg {
 		var r Route
 		if err := json.Unmarshal([]byte(route), &r); err != nil {
-			log.Printf("[shuttle] Bad route packet found: %s\n", err)
+			fmt.Printf("[shuttle] Bad route packet found: %s\n", err)
 		} else {
 			if r.Id == Id {
 				return &r, nil
@@ -434,7 +440,7 @@ func StartShuttleServices(client *Storage, kafkaAddrs []string, port int, kafkaG
 	RefreshRoutes(client, kafkaGroup)
 
 	// Start kafka listening.
-	log.Printf("[shuttle] Connecting to %s\n", strings.Join(kafkaAddrs, ","))
+	fmt.Printf("[shuttle] Connecting to %s\n", strings.Join(kafkaAddrs, ","))
 
 	// Create producer and consumers..
 	spaces := GetSpacesToWatch(kafkaAddrs, kafkaGroup)
@@ -443,7 +449,7 @@ func StartShuttleServices(client *Storage, kafkaAddrs []string, port int, kafkaG
 	kafkaConsumerWeblogs := CreateConsumerCluster(kafkaAddrs, kafkaGroup, []string{"alamoweblogs"})
 	kafkaConsumerBuildlogs := CreateConsumerCluster(kafkaAddrs, kafkaGroup, []string{"alamobuildlogs"})
 
-	log.Printf("[shuttle] Forwarding logs for spaces %s with group %s\n", spaces, kafkaGroup)
+	fmt.Printf("[shuttle] Forwarding logs for spaces %s with group %s\n", spaces, kafkaGroup)
 
 	// ensure close happens at some point.
 	defer producer.Close()
@@ -468,7 +474,7 @@ func StartShuttleServices(client *Storage, kafkaAddrs []string, port int, kafkaG
 
 	t := time.NewTicker(time.Second * 60)
 	for {
-		log.Printf("[metrics] count#logs_sent=%d count#logs_received=%d count#failed_decode=%d count#goroutines=%d\n", messagesSent, messagesReceived, messageFailedDecode, runtime.NumGoroutine())
+		fmt.Printf("[metrics] count#logs_sent=%d count#logs_received=%d count#failed_decode=%d count#goroutines=%d\n", messagesSent, messagesReceived, messageFailedDecode, runtime.NumGoroutine())
 		drains.PrintMetrics()
 		messagesSent = 0
 		messagesReceived = 0
