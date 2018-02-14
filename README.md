@@ -24,9 +24,9 @@ You may need to run `git config --global http.https://gopkg.in.followRedirects t
 
 ### Stream Settings ###
 
-- **KAFKA_HOSTS** - The comma delimited list of hosts (and optionally port concatenated with a : proceeding the host, e.g., host:port) of the kafka instances (not the zookeepers), to connect to.  Each topic must be a "space", the values in the topic must be the kubernetes JSON log structure. (see below).
+- **KAFKA_HOSTS** - The comma delimited list of hosts (and optionally port concatenated with a : proceeding the host, e.g., host:port) of the kafka instances (not the zookeepers), to connect to.  Each topic must be a "space", the values in the topic must be the kubernetes JSON log structure. (see below). 
 
-Note: for the consistency in the ordering of logs (and scalability), the fluentd configuration from kubernetes kicking logs into kafka MUST partition its key based on the pod name., see Fluentd settings below.
+**Important Kafka Notes**: for the consistency in the ordering of logs (and scalability), the fluentd configuration from kubernetes kicking logs into kafka MUST partition its key based on the container name, in addition there MUST be as many logshuttle instances as there are partitions in kafka and must scale in conjunction for optimal performance.
 
 ### Setting up Fluentd App Logs ###
 
