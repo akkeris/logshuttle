@@ -11,7 +11,6 @@ RUN go get github.com/martini-contrib/auth
 RUN go get github.com/martini-contrib/binding
 RUN go get github.com/martini-contrib/render
 RUN go get github.com/nu7hatch/gouuid
-RUN go get github.com/trevorlinton/remote_syslog2
 RUN go get github.com/trevorlinton/sarama
 RUN go build -o /usr/src/app/server .
 CMD ["/usr/src/app/server"]

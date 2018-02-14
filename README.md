@@ -1,30 +1,101 @@
 # Akkeris Log Shuttle and API #
 
+The log shuttle allows you to dynamically route logging from your build, app and web logs into a variety of different places by adding `drains` via its JSON API's.  In addition specific low-volume logs (such as systme events, or platform events) can be added to drains via the API as well.
+
+Logs from fluentd within kubernetes, jenkins (via the kafkalogs plugin) from builds and http logs (from any generic F5, nginx or apache server) can be pushed into kafka where logshuttle picks up, parses, and delivers logs to specified end points that can be dynamically added or removed via the log shuttle API.  The end points that logs can be routed to must be a `syslog+tls://`, `syslog+tcp://`, `syslog+udp://` or `https` schema type.  Note that specific meta data must be added to fluentd, jenkins as well as a convention within the http logs in order for logshuttle to properly identify an "app" that should be routed.
+
 ## Setting Up ##
 
 You may need to run `git config --global http.https://gopkg.in.followRedirects true` as golang has an issue following redirects on gopkg.in.
 
-**Important** Never shuttle the logs for the actual log shuttle, this may result in an infinite loop if theres an error in routing the logs!
+### General Settings ###
 
+- **TEST_MODE** - If set to any value this sets the logshuttle into testing mode that will give it a consumer group name different than the normal log shuttle to not interfer with existing logshuttles; in addition it will override the host in all outgoing destinations to "logshuttle-test" so that it will not be collected (or at a bare minimum, it can be extracted) from existing log end points.
+- **PORT** - Defaults to 5000, the port to listen to for API calls.
 - **RUN_SESSION** - Indicates if we wish to use the log session end point rather than the log shuttle end point (See Log Session below for rational), if you're looking to shuttle logs do not enable this. If you do want a log session end point (and a log session end point only) set this to 1.  Note enabling this will disable the log shuttle end point.  These two end points are mutually exclusive due to the burden it puts on the app and the completely separate types of workloads shuttling vs. sessions need to do.
 
-### Storage ###
+### Storage Settings ###
 
 - **REDIS_URL** - The redis url to maintain what to shuttle and where to.  It also stores temporary log sessions produced.
 
-### Security ###
+### Security Settings ###
 
 - **AUTH_KEY** - The authentication key to use, any requests without this will result in a 401 Unauthorized, the key should be passed in as the value to the "Authorzation" header (no encoding required)
 
-### Log Information ###
+### Stream Settings ###
 
 - **KAFKA_HOSTS** - The comma delimited list of hosts (and optionally port concatenated with a : proceeding the host, e.g., host:port) of the kafka instances (not the zookeepers), to connect to.  Each topic must be a "space", the values in the topic must be the kubernetes JSON log structure. (see below).
-- **PORT** - Defaults to 5000, the port to listen to for API calls.
-- **SYSLOG** - The default syslog end point for the log shuttle's logs. 
 
-### Incoming Log Structure ###
+Note: for the consistency in the ordering of logs (and scalability), the fluentd configuration from kubernetes kicking logs into kafka MUST partition its key based on the pod name., see Fluentd settings below.
 
-The incoming value for all messages must be (standard for kubernetes) the following:
+### Setting up Fluentd App Logs ###
+
+Fluentd is used to push logs from kubernetes into kafka and subsequently into the logshuttle for distribution to one or more syslog end points.  Fluentd should be deployed as a daemon set on your cluster on each node with the recommended configuration (note this assumes fluentd 14), note to use this fluentd configuration the environment variables `ZOO_IPS` a comma delimited list of the kafka broker ips addresses must be set in config map for the fluentd daemonset.  The logshuttle defines an app as a `${deployment name}-${namespace name}` in kubernetes.  So for instance, if you had a namespace "foo" and a deployment within it as "bar" to add a syslog end point via the JSON api the app name would be "bar-foo".
+
+```
+<match fluent.**>
+  @type null
+</match>
+
+<source>
+  @type tail
+  refresh_interval 1
+  path /var/log/containers/*.log
+  pos_file /var/log/es-containers.log.pos
+  time_key @timestamp
+  time_format %Y-%m-%dT%H:%M:%S.%L%Z
+  tag kubernetes.*
+  format json
+  read_from_head true
+</source>
+
+<source>
+  @type monitor_agent
+  bind 0.0.0.0
+  port 24220
+</source>
+
+<filter kubernetes.**>
+  @type kubernetes_metadata
+</filter>
+
+
+<filter **>
+  @type record_transformer
+  enable_ruby
+  <record>
+    topic ${kubernetes["namespace_name"]}
+    partition_key ${kubernetes["container_name"]}
+  </record>
+</filter>
+
+<filter **>
+  @type grep
+  <exclude>
+    key topic
+    pattern kube-system
+  </exclude>
+</filter>
+
+<match **>
+  @type kafka_buffered
+  zookeeper ZOO_IPS # Set brokers via Zookeeper
+  zookeeper_path /kafka/brokers/ids
+  default_topic default
+  output_data_type json
+  output_include_tag  false
+  output_include_time false
+  max_send_retries  3
+  required_acks 0
+  ack_timeout  1500
+  flush_interval 2s
+  buffer_queue_limit 128
+  num_threads 2
+</match>
+```
+
+
+The incoming structure for logs pushed from fluentd to kafka should look like (and be placed in a topic matching the namespace):
 
 ```json
   {
@@ -49,9 +120,42 @@ The incoming value for all messages must be (standard for kubernetes) the follow
 
 The pod_name should be an "app-instance-friendly-id", e.g., a friendly id to designate the individual running app server, meaning if you have two web servers running, this would be web.1, or web.2. The container_name should equal the app name, the topic should equal the space. The namespace_name should also be the space. The log field should contain the information to be forwarded with the stream field containing what stream (stdout, stderr) the information came from.  Finally, the "time" field should be a time that contains a nano-second ISO time stamp (although, lower resolution time stamps are acceptable).
 
-## Usage ##
 
-This API should sit behind the alamo-app-controller process, it should not be hit directly expect for testing.
+### Setting up Jenkins Build Logs ###
+
+**With The Build Shuttle**
+
+Note if you are using the akkeris buildshuttle system, no extra steps are required to stream build logs.
+
+**Without the Build Shuttle but With Jenkins**
+
+You'll need to install the kafkalogs plugin, and the builds must be a DSL/pipeline build system.  Use the following wrapper:
+
+```
+withKafkaLog(kafkaServers: 'host1.example.com:9092,host2.example.com:9092', kafkaTopic: 'alamobuildlogs', metadata:'appname') {
+  echo 'Your build steps here..'
+  echo 'Anoter build log line..'
+}
+```
+
+The specified app name in the metadata corresponds to the app name below in the JSON API for the logshuttle.
+
+**Without Jenkins or the Build Shuttle**
+
+If you are not using the build shuttle, build logs must be pushed into the `alamobuildlogs` topic of kafka with the following format:
+
+`{"build":40,"job":"test","message":"Hello World","metadata":"deploymentname-namespacename"}`
+
+Where build is the numeric build number, job is the job name that is running, message is the build log message line and metadata should contain the deployment name and the namespace name. The combination of the deploymentname-namespacename becomes the app name within the JSON API below. For example, if you had a deployment named "abc" within the space "default" with pod abc.1342234-34djh2 then the app name would be "abc-default".
+
+
+### Setting up HTTP web logs ###
+
+http logs will be automatically processed if they are streamed to the `alamoweblogs` topic (there are plenty of existing open soruce tools to stream http log files to a kafka topic).  The one caveat is the log must have the host=[appname].somedomain.com. The app name should correspond to the kubernetes deploymentname-namespacename. 
+
+## API Usage ##
+
+This API should sit behind the controller-api process, it should not be hit directly except for testing.
 
 ## API General Information ##
 

@@ -2,74 +2,90 @@ package drains
 
 import (
 	"bytes"
-	"github.com/trevorlinton/remote_syslog2/syslog"
+	"../syslog"
 	"net/http"
 	"time"
 	"strconv"
 	"strings"
+	"sync"
 	"fmt"
-	"log"
 )
 
 type Drain struct {
 	Url      string
 	Packets  chan syslog.Packet
-	Errors   chan error
 	buffered []syslog.Packet
 	frame    int
-	endpoint *syslog.Logger
+	pool 	 *Pool
 }
 
 var drains []*Drain;
+var pools_list []*Pool;
+var pools map[string]*Pool;
+var pool_mutex *sync.Mutex;
+var bad_hosts_mutex *sync.Mutex;
+var bad_hosts map[string]bool;
 
 const MaxLogSize int = 99990;
+
+func PrintMetrics() {
+	pool_mutex.Lock()
+	for _, pool := range pools_list {
+		pool.PrintMetrics()
+	}
+	pool_mutex.Unlock()
+}
 
 func Dial(kafkaGroup string, Url string) (*Drain, error) {
 	if strings.HasPrefix(Url, "http://") || strings.HasPrefix(Url, "https://") {
 		drain := &Drain{
 			Url:      Url,
-			Packets:  make(chan syslog.Packet, 100),
-			Errors:   make(chan error, 0),
+			Packets:  make(chan syslog.Packet),
 			buffered: make([]syslog.Packet, 0),
-			frame:    0,
-			endpoint: nil}
+			frame:    0}
 
 		go drain.buffer()
 
 		drains = append(drains, drain)
 		return drain, nil
 	} else {
-		var network = "tls"
-		var host = Url
-		if strings.HasPrefix(Url, "syslog+tcp://") || strings.HasPrefix(Url, "syslog://") || strings.HasPrefix(Url, "tcp://") {
-			network = "tcp"
-		} else if strings.HasPrefix(Url, "syslog+udp://") || strings.HasPrefix(Url, "udp://") {
-			network = "udp"
-		} else if strings.HasPrefix(Url, "syslog+tls://") || strings.HasPrefix(Url, "ssh://") {
-			network = "tls"
-		} else {
-			return nil, fmt.Errorf("Warning unknown url schema provided: %s", Url)
+		pool_mutex.Lock()
+		bad_hosts_mutex.Lock()
+		if _, ok := bad_hosts[Url]; ok {
+			bad_hosts_mutex.Unlock()
+			pool_mutex.Unlock()
+			return nil, fmt.Errorf("host already failed to connect.")
+		}
+		bad_hosts_mutex.Unlock()
+		// If we already have a pool for this, go ahead and return.
+		if _, ok := pools[Url]; ok {
+			d := &Drain{Url: Url,
+				Packets: pools[Url].Packets,
+				buffered: make([]syslog.Packet, 0),
+				frame: 0,
+				pool: pools[Url]}
+			pool_mutex.Unlock()
+			return d, nil
+		}
+		// otherwise create a new pool.
+		pool := &Pool{}
+		if err := pool.Init(Url); err != nil {
+			bad_hosts_mutex.Lock()
+			bad_hosts[Url] = true
+			bad_hosts_mutex.Unlock()
+			pool_mutex.Unlock()
+			fmt.Printf("[drains] Unable to process route (%s): %s\n", Url, err)
+			return nil, err
 		}
 
-		if strings.Contains(Url, "://") {
-			host = strings.Split(Url, "://")[1]
-		}
-
-		dest, err := syslog.Dial(kafkaGroup, network, host, nil, time.Second*2, time.Second*4, MaxLogSize)
-		if err != nil {
-			fmt.Println(err)
-			return nil, fmt.Errorf("Unable to establish connection for: %s using %s to %s", Url, network, host)
-		}
-		if dest == nil {
-			return nil, fmt.Errorf("Unable to establish connection, no known error %s", host)
-		}
-
+		pools[Url] = pool
+		pools_list = append(pools_list, pool)
+		pool_mutex.Unlock()
 		drain := &Drain{Url: Url,
-			Packets: dest.Packets,
-			Errors: dest.Errors,
+			Packets: pool.Packets,
 			buffered: make([]syslog.Packet, 0),
 			frame: 0,
-			endpoint: dest}
+			pool: pool}
 		return drain, nil
 	}
 }
@@ -97,7 +113,7 @@ func (l *Drain) Drain() {
 		req.Header.Add("Content-Type", "application/logplex-1")
 		client.Do(req)
 	} else {
-		log.Printf("Error getting a drain: %s", err);
+		fmt.Printf("[drains] Error getting a drain: %s", err);
 	}
 }
 
@@ -108,6 +124,23 @@ func (l *Drain) buffer() {
 			l.Drain();
 		}
 	}
+}
+
+func InitSyslogDrains() {
+	pool_mutex = &sync.Mutex{}
+	bad_hosts_mutex = &sync.Mutex{}
+	pools = make(map[string]*Pool)
+	pools_list = make([]*Pool, 0)
+	bad_hosts = make(map[string]bool)
+	ticker := time.NewTicker(time.Second * 60 * 5)
+	go func() {
+		for {
+			bad_hosts_mutex.Lock()
+			bad_hosts = make(map[string]bool)
+			bad_hosts_mutex.Unlock()
+			<-ticker.C
+		}
+	}()
 }
 
 func InitUrlDrains() {
