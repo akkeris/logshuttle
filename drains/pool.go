@@ -132,7 +132,7 @@ func (p *Pool) writeLoop() {
 				ndx := uint32(crc32.ChecksumIEEE([]byte(packet.Tag)) % p.OpenConnections())
 				p.conns[ndx].Packets <- packet
 				p.Pressure = (p.Pressure + (float64(len(p.Packets)) / float64(cap(p.Packets)))) / float64(2)
-				if(p.Pressure > 0.75 && p.OpenConnections() < p.MaxConnections) {
+				if(p.Pressure > 0.1 && p.OpenConnections() < p.MaxConnections) {
 					go p.connect(true, p.Pressure)
 				}
 				p.Mutex.Unlock()
