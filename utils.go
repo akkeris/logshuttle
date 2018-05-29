@@ -1,16 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
+	"github.com/go-martini/martini"
+	"github.com/martini-contrib/render"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
-	"net/http"
-	"github.com/martini-contrib/render"
-	"github.com/go-martini/martini"
 )
 
 // Boilerplate random string generator
@@ -24,7 +24,6 @@ const (
 )
 
 var serverName string
-
 
 func ReportInvalidRequest(r render.Render) {
 	r.JSON(400, "Malformed Request")
@@ -63,7 +62,7 @@ func HealthCheck(client *Storage) func(http.ResponseWriter, *http.Request, marti
 	}
 }
 
-func ContainerToProc(container string) (Process) {
+func ContainerToProc(container string) Process {
 	proc := Process{App: container, Type: "web"}
 	if strings.Index(container, "--") != -1 {
 		var components = strings.SplitN(container, "--", 2)
@@ -72,7 +71,7 @@ func ContainerToProc(container string) (Process) {
 	return proc
 }
 
-func WriteAndFlush(log string, res http.ResponseWriter) (error) {
+func WriteAndFlush(log string, res http.ResponseWriter) error {
 	_, err := res.Write([]byte(log))
 	if err != nil {
 		return err
@@ -132,7 +131,7 @@ func RandomString(n int) string {
 	return string(b)
 }
 
-func ParseWebLogMessage(data []byte, msg *LogSpec) (bool) {
+func ParseWebLogMessage(data []byte, msg *LogSpec) bool {
 	var app = ""
 	var space = ""
 	var reformattedMessage = ""
@@ -185,7 +184,7 @@ func ParseWebLogMessage(data []byte, msg *LogSpec) (bool) {
 	return false
 }
 
-func ParseBuildLogMessage(data []byte, msg *LogSpec) (bool) {
+func ParseBuildLogMessage(data []byte, msg *LogSpec) bool {
 	var bmsg BuildLogSpec
 	if err := json.Unmarshal(data, &bmsg); err != nil {
 		return true
@@ -200,11 +199,11 @@ func ParseBuildLogMessage(data []byte, msg *LogSpec) (bool) {
 		} else {
 			space = splitAppName[1]
 		}
-		
+
 		if app == "" || space == "" {
 			return true
 		}
-		
+
 		rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
 		if err == nil {
 			bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
@@ -226,5 +225,3 @@ func ParseBuildLogMessage(data []byte, msg *LogSpec) (bool) {
 		return false
 	}
 }
-
-

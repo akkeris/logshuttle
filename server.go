@@ -1,7 +1,13 @@
 package main
 
 import (
+	"./drains"
 	"fmt"
+	"github.com/go-martini/martini"
+	"github.com/martini-contrib/binding"
+	"github.com/martini-contrib/render"
+	"github.com/nu7hatch/gouuid"
+	"github.com/stackimpact/stackimpact-go"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -10,12 +16,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"./drains"
-	"github.com/go-martini/martini"
-	"github.com/martini-contrib/binding"
-	"github.com/martini-contrib/render"
-	"github.com/nu7hatch/gouuid"
-	"github.com/stackimpact/stackimpact-go"
 )
 
 func ListLogDrains(client *Storage) func(martini.Params, render.Render) {
@@ -115,7 +115,7 @@ func DeleteLogDrain(client *Storage) func(martini.Params, render.Render) {
 			ReportError(r, err)
 			return
 		}
-		
+
 		r.JSON(200, LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
 	}
 }
@@ -262,7 +262,7 @@ func main() {
 	if os.Getenv("STACKIMPACT") != "" {
 		stackimpact.Start(stackimpact.Options{
 			AgentKey: os.Getenv("STACKIMPACT"),
-	  		AppName: "Logshuttle",
+			AppName:  "Logshuttle",
 		})
 	}
 
@@ -281,11 +281,11 @@ func main() {
 	if os.Getenv("PROFILE") != "" {
 		go func() {
 			fmt.Println(http.ListenAndServe("localhost:6060", nil))
-		  	http.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
-		  	http.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-		  	http.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-		  	http.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-		  	http.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			http.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+			http.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			http.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			http.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			http.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 		}()
 	}
 

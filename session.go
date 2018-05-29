@@ -1,30 +1,30 @@
 package main
 
 import (
-	"net/http"
 	"encoding/json"
 	"fmt"
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
+	"net/http"
 	"strings"
 	"time"
-	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type Session struct {
-	IsOpen bool
-	loops int
+	IsOpen   bool
+	loops    int
 	response http.ResponseWriter
-	app string
-	space string
-	group string
+	app      string
+	space    string
+	group    string
 }
 
-func (ls *Session) RespondWithAppLog(e *kafka.Message) (error) {
+func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 	var msg LogSpec
 	if err := json.Unmarshal(e.Value, &msg); err == nil {
 		if IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
 			ls.loops = 0
 			proc := ContainerToProc(msg.Kubernetes.ContainerName)
-			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-" + proc.Type + "-", "", 1), proc.App + "-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"
 			err = WriteAndFlush(log, ls.response)
 			if err != nil {
 				return err
@@ -34,7 +34,7 @@ func (ls *Session) RespondWithAppLog(e *kafka.Message) (error) {
 	return nil
 }
 
-func (ls *Session) RespondWithWebLog(e *kafka.Message) (error) {
+func (ls *Session) RespondWithWebLog(e *kafka.Message) error {
 	var msg LogSpec
 	if ParseWebLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
 		ls.loops = 0
@@ -47,7 +47,7 @@ func (ls *Session) RespondWithWebLog(e *kafka.Message) (error) {
 	return nil
 }
 
-func (ls *Session) RespondWithBuildLog(e *kafka.Message) (error) {
+func (ls *Session) RespondWithBuildLog(e *kafka.Message) error {
 	var msg LogSpec
 	if ParseBuildLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
 		ls.loops = 0
@@ -76,7 +76,7 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 
 	for ls.IsOpen == true {
 		ev := consumer.Poll(100)
-		if ls.loops > 10 * 60 {
+		if ls.loops > 10*60 {
 			// we've timed out.
 			ls.IsOpen = false
 			continue
@@ -113,4 +113,3 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 	}
 	fmt.Println("[info] closing listener on " + ls.app + "-" + ls.space)
 }
-

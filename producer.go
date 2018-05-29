@@ -1,18 +1,18 @@
 package main
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
 	"strings"
-	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 func CreateProducer(kafkaAddrs []string, kafkaGroup string) *kafka.Producer {
 	c, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers":				strings.Join(kafkaAddrs, ","),
-		"group.id":							kafkaGroup,
-		"session.timeout.ms":				6000,	
+		"bootstrap.servers":  strings.Join(kafkaAddrs, ","),
+		"group.id":           kafkaGroup,
+		"session.timeout.ms": 6000,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -21,9 +21,9 @@ func CreateProducer(kafkaAddrs []string, kafkaGroup string) *kafka.Producer {
 }
 
 type LogProducer struct {
-	IsOpen bool
-	address []string
-	group string
+	IsOpen   bool
+	address  []string
+	group    string
 	producer *kafka.Producer
 }
 
@@ -38,7 +38,6 @@ func (lc *LogProducer) AddLog(message LogSpec) error {
 		Headers:        []kafka.Header{},
 	}, nil)
 }
-
 
 func (lc *LogProducer) Init(kafkaAddrs []string, kafkaGroup string) {
 	lc.address = kafkaAddrs

@@ -2,8 +2,8 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"encoding/json"
+	"errors"
 	"gopkg.in/redis.v4"
 	"time"
 )
@@ -11,8 +11,8 @@ import (
 type Storage interface {
 	HealthCheck() error
 	Init(url string) error
-	SetSession(key string, value LogSession, duration time.Duration) (error)
-	GetSession(key string)  (LogSession, error)
+	SetSession(key string, value LogSession, duration time.Duration) error
+	GetSession(key string) (LogSession, error)
 	GetRoutes() ([]Route, error)
 	GetRouteById(id string) (*Route, error)
 	RemoveRoute(route Route) error
@@ -35,9 +35,6 @@ func UnmarshalRoute(route string) (Route, error) {
 	}
 	return r, nil
 }
-
-
-
 
 // Postgres Interface
 
@@ -76,7 +73,7 @@ func (rs *PostgresStorage) Init(url string) error {
 }
 
 func (rs *PostgresStorage) SetSession(key string, value LogSession, duration time.Duration) error {
-	_, err := rs.client.Exec("insert into sessions(session, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6)", 
+	_, err := rs.client.Exec("insert into sessions(session, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6)",
 		key, value.App, value.Space, value.Lines, value.Tail, duration)
 	return err
 }
@@ -87,7 +84,7 @@ func (rs *PostgresStorage) GetSession(key string) (value LogSession, err error) 
 }
 
 func (rs *PostgresStorage) GetRoutes() ([]Route, error) {
-	rows, err  := rs.client.Query("select drain, app, space, created, updated, destination from drains")
+	rows, err := rs.client.Query("select drain, app, space, created, updated, destination from drains")
 	if err != nil {
 		return nil, err
 	}
@@ -133,10 +130,6 @@ func (rs *PostgresStorage) AddRoutes(routes []Route) (err error) {
 	return nil
 }
 
-
-
-
-
 // Redis Interface
 
 type RedisStorage struct {
@@ -158,7 +151,7 @@ func (rs *RedisStorage) Init(url string) error {
 	return nil
 }
 
-func (rs *RedisStorage) SetSession(key string, value LogSession, duration time.Duration) (error) {
+func (rs *RedisStorage) SetSession(key string, value LogSession, duration time.Duration) error {
 	bytes, err := json.Marshal(value)
 	if err != nil {
 		return err

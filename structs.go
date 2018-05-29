@@ -1,30 +1,30 @@
 package main
 
 import (
-	"time"
 	"./drains"
 	cluster "github.com/bsm/sarama-cluster"
+	"time"
 )
 
 type BuildLogSpec struct {
 	Metadata string `json:"metadata"`
-	Build int `json:"build"`
-	Job string `json:"job"`
-	Message string `json:"message"`
+	Build    int    `json:"build"`
+	Job      string `json:"job"`
+	Message  string `json:"message"`
 }
 
 type LabelsSpec struct {
-	Name string `json:"name"`
+	Name            string `json:"name"`
 	PodTemplateHash string `json:"pod-template-hash"`
 }
 
 type KubernetesSpec struct {
-	NamespaceName string `json:"namespace_name"`
-	PodId string `json:"pod_id"`
-	PodName string `json:"pod_name"`
-	ContainerName string `json:"container_name"`
-	Labels LabelsSpec `json:"labels"`
-	Host string `json:"host"`
+	NamespaceName string     `json:"namespace_name"`
+	PodId         string     `json:"pod_id"`
+	PodName       string     `json:"pod_name"`
+	ContainerName string     `json:"container_name"`
+	Labels        LabelsSpec `json:"labels"`
+	Host          string     `json:"host"`
 }
 
 type DockerSpec struct {
@@ -32,24 +32,24 @@ type DockerSpec struct {
 }
 
 type LogSpec struct {
-	Log string `json:"log"`
-	Stream string `json:"stream"`
-	Time time.Time `json:"time"`
-	Space string `json:"space"`
-	Docker DockerSpec `json:"docker"`
+	Log        string         `json:"log"`
+	Stream     string         `json:"stream"`
+	Time       time.Time      `json:"time"`
+	Space      string         `json:"space"`
+	Docker     DockerSpec     `json:"docker"`
 	Kubernetes KubernetesSpec `json:"kubernetes"`
-	Topic string `json:"topic"`
-	Tag string `json:"tag"`
+	Topic      string         `json:"topic"`
+	Tag        string         `json:"tag"`
 }
 
 type Route struct {
-	Id string `json:"id"`
-	Space string `json:"space"`
-	App string `json:"app"`
-	Created time.Time `json:"created"`
-	Updated time.Time `json:"updated"`
-	DestinationUrl string `json:"url"`
-	Destination *drains.Drain
+	Id             string    `json:"id"`
+	Space          string    `json:"space"`
+	App            string    `json:"app"`
+	Created        time.Time `json:"created"`
+	Updated        time.Time `json:"updated"`
+	DestinationUrl string    `json:"url"`
+	Destination    *drains.Drain
 }
 
 type LogDrainCreateRequest struct {
@@ -57,17 +57,17 @@ type LogDrainCreateRequest struct {
 }
 
 type AddonResponse struct {
-	Id string `json:"id"`
+	Id   string `json:"id"`
 	Name string `json:"name"`
 }
 
 type LogDrainResponse struct {
-	Addon AddonResponse `json:"addon"`
-	CreatedAt time.Time `json:"created_at"`
-	Id string `json:"id"`
-	Token string `json:"token"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Url string `json:"url"`
+	Addon     AddonResponse `json:"addon"`
+	CreatedAt time.Time     `json:"created_at"`
+	Id        string        `json:"id"`
+	Token     string        `json:"token"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Url       string        `json:"url"`
 }
 
 type MessageMetadata struct {
@@ -82,19 +82,19 @@ type KafkaMessage struct {
 }
 
 type LogSession struct {
-	App string `json:"app"`
+	App   string `json:"app"`
 	Space string `json:"space"`
-	Lines int `json:lines`
-	Tail bool `json:tail`
+	Lines int    `json:lines`
+	Tail  bool   `json:tail`
 }
 
 type Process struct {
-	App string `json:"app"`
+	App  string `json:"app"`
 	Type string `json:"type"`
 }
 
 type KafkaConsumer struct {
 	Consumer *cluster.Consumer
-	Config *cluster.Config
-	Client *cluster.Client
+	Config   *cluster.Config
+	Client   *cluster.Client
 }

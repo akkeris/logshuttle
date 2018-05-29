@@ -1,29 +1,29 @@
 package main
 
 import (
+	"./drains"
+	"./syslog"
 	"encoding/json"
 	"log"
 	"runtime"
 	"strings"
 	"sync"
-	"./drains"
-	"./syslog"
 )
 
 // TODO: Connect on demand (but deal with bad hosts will be tricky)
 // TODO: Mark in storage errors connecting to syslog or drains
 
 type Shuttle struct {
-	sent int
-	received int
+	sent          int
+	received      int
 	failed_decode int
-	test_mode bool
-	routes map[string][]Route
-	routes_mutex *sync.Mutex
-	kafka_group string
-	kafka_addrs string
-	consumer LogConsumer
-	client *Storage
+	test_mode     bool
+	routes        map[string][]Route
+	routes_mutex  *sync.Mutex
+	kafka_group   string
+	kafka_addrs   string
+	consumer      LogConsumer
+	client        *Storage
 }
 
 func (sh *Shuttle) forwardAppLogs() {
@@ -124,7 +124,7 @@ func (sh *Shuttle) SendMessage(message LogSpec) {
 		var p = syslog.Packet{
 			Severity: syslog.SevInfo,
 			Facility: syslog.LogUser,
-			Hostname: host, 
+			Hostname: host,
 			Tag:      tag,
 			Time:     message.Time,
 			Message:  KubernetesToHumanReadable(message.Log),
@@ -133,7 +133,6 @@ func (sh *Shuttle) SendMessage(message LogSpec) {
 		sh.sent++
 	}
 }
-
 
 func (sh *Shuttle) Close() {
 	sh.consumer.Close()
@@ -191,4 +190,3 @@ func (sh *Shuttle) RefreshRoutes() {
 	}
 	wg.Wait()
 }
-

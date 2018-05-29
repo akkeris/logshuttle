@@ -2,19 +2,19 @@ package main
 
 import (
 	"errors"
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
 	"strings"
-	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 func CreateConsumerCluster(kafkaAddrs []string, kafkaGroup string) *kafka.Consumer {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers":				strings.Join(kafkaAddrs, ","),
-		"group.id":							kafkaGroup,
-		"enable.auto.commit":				true,
-		"auto.commit.interval.ms":			1000,
-		"session.timeout.ms":				30000,
-		"socket.keepalive.enable": 			true,
+		"bootstrap.servers":       strings.Join(kafkaAddrs, ","),
+		"group.id":                kafkaGroup,
+		"enable.auto.commit":      true,
+		"auto.commit.interval.ms": 1000,
+		"session.timeout.ms":      30000,
+		"socket.keepalive.enable": true,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -24,14 +24,13 @@ func CreateConsumerCluster(kafkaAddrs []string, kafkaGroup string) *kafka.Consum
 
 type LogConsumer struct {
 	kafkaConsumer *kafka.Consumer
-	AppLogs chan *kafka.Message
-	BuildLogs chan *kafka.Message
-	WebLogs chan *kafka.Message
-	IsOpen bool
-	address []string
-	group string
+	AppLogs       chan *kafka.Message
+	BuildLogs     chan *kafka.Message
+	WebLogs       chan *kafka.Message
+	IsOpen        bool
+	address       []string
+	group         string
 }
-
 
 func (lc *LogConsumer) Init(kafkaAddrs []string, kafkaGroup string) {
 	lc.address = kafkaAddrs
