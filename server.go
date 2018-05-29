@@ -18,6 +18,27 @@ import (
 	"time"
 )
 
+
+type logDrainCreateRequest struct {
+	Url string `json:"url"`
+}
+
+
+type addonResponse struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type logDrainResponse struct {
+	Addon     addonResponse `json:"addon"`
+	CreatedAt time.Time     `json:"created_at"`
+	Id        string        `json:"id"`
+	Token     string        `json:"token"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Url       string        `json:"url"`
+}
+
+
 func ListLogDrains(client *Storage) func(martini.Params, render.Render) {
 	return func(params martini.Params, rr render.Render) {
 		if params["app_key"] == "" {
@@ -39,10 +60,10 @@ func ListLogDrains(client *Storage) func(martini.Params, render.Render) {
 			return
 		}
 
-		var resp = make([]LogDrainResponse, 0)
+		var resp = make([]logDrainResponse, 0)
 		for _, r := range routes_pkg {
 			if r.App == app && r.Space == space {
-				var n = LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: r.Created, UpdatedAt: r.Updated, Id: r.Id, Token: app + "-" + space, Url: r.DestinationUrl}
+				var n = logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: r.Created, UpdatedAt: r.Updated, Id: r.Id, Token: app + "-" + space, Url: r.DestinationUrl}
 				resp = append(resp, n)
 			}
 		}
@@ -65,8 +86,8 @@ func CreateLogEvent(kafkaProducer LogProducer) func(martini.Params, LogSpec, bin
 	}
 }
 
-func CreateLogDrain(client *Storage) func(martini.Params, LogDrainCreateRequest, binding.Errors, render.Render) {
-	return func(params martini.Params, opts LogDrainCreateRequest, berr binding.Errors, r render.Render) {
+func CreateLogDrain(client *Storage) func(martini.Params, logDrainCreateRequest, binding.Errors, render.Render) {
+	return func(params martini.Params, opts logDrainCreateRequest, berr binding.Errors, r render.Render) {
 		if berr != nil {
 			ReportInvalidRequest(r)
 			return
@@ -92,7 +113,7 @@ func CreateLogDrain(client *Storage) func(martini.Params, LogDrainCreateRequest,
 			ReportError(r, err)
 			return
 		}
-		r.JSON(201, LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: id.String(), Token: app + "-" + space, Url: opts.Url})
+		r.JSON(201, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: id.String(), Token: app + "-" + space, Url: opts.Url})
 	}
 }
 
@@ -116,7 +137,7 @@ func DeleteLogDrain(client *Storage) func(martini.Params, render.Render) {
 			return
 		}
 
-		r.JSON(200, LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
+		r.JSON(200, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
 	}
 }
 
@@ -138,7 +159,7 @@ func GetLogDrain(client *Storage) func(martini.Params, render.Render) {
 			r.JSON(404, map[string]interface{}{"message": "No such log drain or app found"})
 			return
 		}
-		r.JSON(200, LogDrainResponse{Addon: AddonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
+		r.JSON(200, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
 	}
 }
 
@@ -151,7 +172,7 @@ func StartHttpShuttleServices(client *Storage, producer LogProducer, port int) {
 	})
 	m.Use(render.Renderer())
 	m.Get("/apps/:app_key/log-drains", ListLogDrains(client))
-	m.Post("/apps/:app_key/log-drains", binding.Json(LogDrainCreateRequest{}), CreateLogDrain(client))
+	m.Post("/apps/:app_key/log-drains", binding.Json(logDrainCreateRequest{}), CreateLogDrain(client))
 	m.Delete("/apps/:app_key/log-drains/:id", DeleteLogDrain(client))
 	m.Get("/apps/:app_key/log-drains/:id", GetLogDrain(client))
 	m.Get("/octhc", HealthCheck(client))

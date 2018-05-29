@@ -184,8 +184,17 @@ func ParseWebLogMessage(data []byte, msg *LogSpec) bool {
 	return false
 }
 
+
+
+type buildLogSpec struct {
+	Metadata string `json:"metadata"`
+	Build    int    `json:"build"`
+	Job      string `json:"job"`
+	Message  string `json:"message"`
+}
+
 func ParseBuildLogMessage(data []byte, msg *LogSpec) bool {
-	var bmsg BuildLogSpec
+	var bmsg buildLogSpec
 	if err := json.Unmarshal(data, &bmsg); err != nil {
 		return true
 	} else {

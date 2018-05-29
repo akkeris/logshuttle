@@ -2,16 +2,8 @@ package main
 
 import (
 	"./drains"
-	cluster "github.com/bsm/sarama-cluster"
 	"time"
 )
-
-type BuildLogSpec struct {
-	Metadata string `json:"metadata"`
-	Build    int    `json:"build"`
-	Job      string `json:"job"`
-	Message  string `json:"message"`
-}
 
 type LabelsSpec struct {
 	Name            string `json:"name"`
@@ -52,35 +44,6 @@ type Route struct {
 	Destination    *drains.Drain
 }
 
-type LogDrainCreateRequest struct {
-	Url string `json:"url"`
-}
-
-type AddonResponse struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
-}
-
-type LogDrainResponse struct {
-	Addon     AddonResponse `json:"addon"`
-	CreatedAt time.Time     `json:"created_at"`
-	Id        string        `json:"id"`
-	Token     string        `json:"token"`
-	UpdatedAt time.Time     `json:"updated_at"`
-	Url       string        `json:"url"`
-}
-
-type MessageMetadata struct {
-	ReceivedAt time.Time `json:"received_at"`
-}
-
-type KafkaMessage struct {
-	Partition int32           `json:"partition"`
-	Offset    int64           `json:"offset"`
-	Value     string          `json:"value"`
-	Metadata  MessageMetadata `json:"metadata"`
-}
-
 type LogSession struct {
 	App   string `json:"app"`
 	Space string `json:"space"`
@@ -91,10 +54,4 @@ type LogSession struct {
 type Process struct {
 	App  string `json:"app"`
 	Type string `json:"type"`
-}
-
-type KafkaConsumer struct {
-	Consumer *cluster.Consumer
-	Config   *cluster.Config
-	Client   *cluster.Client
 }
