@@ -1,138 +1,116 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"strings"
 	"net/http"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
-	"github.com/go-martini/martini"
-	"github.com/martini-contrib/binding"
-	"github.com/martini-contrib/render"
-	"github.com/nu7hatch/gouuid"
-	"strconv"
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
-func ConsumeAndRespond(kafkaAddrs []string, app string, space string, listenspace []string, res http.ResponseWriter, group string) {
-	cluster := CreateConsumerCluster(kafkaAddrs, group, listenspace)
-	var last_date = time.Now()
-	defer cluster.Consumer.Close()
-	for {
-		select {
-			case message := <-cluster.Consumer.Messages():
-				if message.Topic == space {
-					var msg LogSpec
-					if err := json.Unmarshal(message.Value, &msg); err == nil {
-						if IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
-							if msg.Time.Unix() < last_date.Unix() {
-								msg.Time = time.Now()
-							}
-							last_date = msg.Time
-							proc := Process{App: msg.Kubernetes.ContainerName, Type: "web"}
-							if strings.Index(msg.Kubernetes.ContainerName, "--") != -1 {
-								var components = strings.SplitN(msg.Kubernetes.ContainerName, "--", 2)
-								proc = Process{App: components[0], Type: components[1]}
-							}
-							_, err := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"))
-							if err != nil {
-								return
-							} else if f, ok := res.(http.Flusher); ok {
-								f.Flush()
-							}
-						}
-					}
-				} else if message.Topic == "alamoweblogs" {
-					var msg LogSpec
-					err := ParseWebLogMessage(message.Value, &msg)
-					if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
-						if msg.Time.Unix() < last_date.Unix() {
-							msg.Time = time.Now()
-						}
-						last_date = msg.Time
-						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/router: " + msg.Log + "\n"))
-						if err2 != nil {
-							return
-						} else if f, ok := res.(http.Flusher); ok {
-							f.Flush()
-						}
-					} 
-				} else if message.Topic == "alamobuildlogs" {
-					var msg LogSpec
-					err := ParseBuildLogMessage(message.Value, &msg)
-					if err == false && IsAppMatch(msg.Kubernetes.ContainerName, app) && msg.Topic == space {
-						if msg.Time.Unix() < last_date.Unix() {
-							msg.Time = time.Now()
-						}
-						last_date = msg.Time
-						_, err2 := res.Write([]byte(msg.Time.UTC().Format(time.RFC3339) + " " + app + "-" + space + " akkeris/build: " + msg.Log + "\n"))
-						if err2 != nil {
-							return
-						} else if f, ok := res.(http.Flusher); ok {
-							f.Flush()
-						}
-					}
-				} 
-				cluster.Consumer.MarkOffset(message, "")
+type Session struct {
+	IsOpen bool
+	loops int
+	response http.ResponseWriter
+	app string
+	space string
+	group string
+}
+
+func (ls *Session) RespondWithAppLog(e *kafka.Message) (error) {
+	var msg LogSpec
+	if err := json.Unmarshal(e.Value, &msg); err == nil {
+		if IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
+			ls.loops = 0
+			proc := ContainerToProc(msg.Kubernetes.ContainerName)
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-" + proc.Type + "-", "", 1), proc.App + "-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"
+			err = WriteAndFlush(log, ls.response)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
-func CreateLogSession(client *Storage) func(martini.Params, LogSession, binding.Errors, render.Render) {
-	return func(params martini.Params, logSess LogSession, berr binding.Errors, r render.Render) {
-		if berr != nil {
-			ReportInvalidRequest(r)
-			return
-		}
-		id, err := uuid.NewV4()
+func (ls *Session) RespondWithWebLog(e *kafka.Message) (error) {
+	var msg LogSpec
+	if ParseWebLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
+		ls.loops = 0
+		log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/router: " + msg.Log + "\n"
+		err := WriteAndFlush(log, ls.response)
 		if err != nil {
-			ReportError(r, err)
-			return
+			return err
 		}
-		bytes, err := json.Marshal(logSess)
-		if err != nil {
-			ReportError(r, err)
-			return
-		}
-		_, err = (*client).Set(id.String(), string(bytes), time.Minute*5)
-		if err != nil {
-			ReportError(r, err)
-			return
-		}
-		r.JSON(201, map[string]interface{}{"id": id.String()})
 	}
+	return nil
 }
 
-func ReadLogSession(client *Storage, kafkaAddrs []string) func(http.ResponseWriter, *http.Request, martini.Params) {
-	return func(res http.ResponseWriter, req *http.Request, params martini.Params) {
-		logSessionString, err := (*client).Get(params["id"])
+func (ls *Session) RespondWithBuildLog(e *kafka.Message) (error) {
+	var msg LogSpec
+	if ParseBuildLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
+		ls.loops = 0
+		log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/build: " + msg.Log + "\n"
+		err := WriteAndFlush(log, ls.response)
 		if err != nil {
-			fmt.Printf("Cannot find id %s\n", params["id"])
-			res.WriteHeader(404)
-			return
+			return err
 		}
-		var logSess LogSession
-		if err := json.Unmarshal([]byte(logSessionString), &logSess); err != nil {
-			res.WriteHeader(500)
-			return
-		}
-		res.WriteHeader(200)
-
-		ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, []string{logSess.Space, "alamoweblogs", "alamobuildlogs"}, res, RandomString(16))
 	}
+	return nil
 }
 
-func StartSessionServices(client *Storage, kafkaAddrs []string, port int) {
-	m := martini.Classic()
-	m.Use(func(res http.ResponseWriter, req *http.Request) {
-		if req.Method == "POST" && req.URL.Path == "/log-sessions" && req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") {
-			res.WriteHeader(http.StatusUnauthorized)
+func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space string, res http.ResponseWriter) {
+	fmt.Println("[info] listening for logs on " + app + "-" + space)
+
+	ls.group = RandomString(16)
+	ls.response = res
+	ls.space = space
+	ls.app = app
+	ls.loops = 0
+	ls.IsOpen = true
+
+	consumer := CreateConsumerCluster(kafkaAddrs, ls.group)
+	consumer.SubscribeTopics([]string{ls.space, "alamoweblogs", "alamobuildlogs"}, nil)
+	defer consumer.Close()
+
+	for ls.IsOpen == true {
+		ev := consumer.Poll(100)
+		if ls.loops > 10 * 60 {
+			// we've timed out.
+			ls.IsOpen = false
+			continue
 		}
-	})
-	m.Use(render.Renderer())
-	// IMPORTANT: Only POST /log-sessions is protected
-	m.Post("/log-sessions", binding.Json(LogSession{}), CreateLogSession(client))
-	m.Get("/log-sessions/:id", ReadLogSession(client, kafkaAddrs))
-	m.Get("/octhc", HealthCheck(client, kafkaAddrs))
-	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
+		if ev == nil {
+			ls.loops = ls.loops + 1
+			continue
+		}
+		switch e := ev.(type) {
+		case *kafka.Message:
+			if *e.TopicPartition.Topic == ls.space {
+				if err := ls.RespondWithAppLog(e); err != nil {
+					ls.IsOpen = false
+					break
+				}
+			} else if *e.TopicPartition.Topic == "alamoweblogs" {
+				if err := ls.RespondWithWebLog(e); err != nil {
+					ls.IsOpen = false
+					break
+				}
+			} else if *e.TopicPartition.Topic == "alamobuildlogs" {
+				if err := ls.RespondWithBuildLog(e); err != nil {
+					ls.IsOpen = false
+					break
+				}
+			}
+		case kafka.Error:
+			fmt.Printf("%% Error: %v\n", e)
+			ls.IsOpen = false
+			return
+		default:
+			ls.loops = ls.loops + 1
+		}
+	}
+	fmt.Println("[info] closing listener on " + ls.app + "-" + ls.space)
 }
+

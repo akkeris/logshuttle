@@ -6,16 +6,6 @@ import (
 	cluster "github.com/bsm/sarama-cluster"
 )
 
-type Storage interface {
-	HealthCheck() error
-	Init(string) error
-	GetRoutes() ([]string, error)
-	RemoveRoute(string) error
-	AddRoute(string) error
-	Set(string, string, time.Duration) (string, error)
-	Get(string) (string, error)
-}
-
 type BuildLogSpec struct {
 	Metadata string `json:"metadata"`
 	Build int `json:"build"`

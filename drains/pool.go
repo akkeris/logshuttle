@@ -1,13 +1,13 @@
 package drains
 
 import (
-	"../syslog"
-	"time"
-	"strings"
 	"fmt"
 	"hash/crc32"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
+	"../syslog"
 )
 
 type Pool struct {

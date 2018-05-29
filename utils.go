@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"encoding/json"
-	"log"
 	"math/rand"
 	"net/url"
 	"regexp"
@@ -11,7 +10,6 @@ import (
 	"time"
 	"net/http"
 	"github.com/martini-contrib/render"
-	"github.com/bsm/sarama-cluster"
 	"github.com/go-martini/martini"
 )
 
@@ -27,32 +25,6 @@ const (
 
 var serverName string
 
-func CreateConsumerCluster(kafkaAddrs []string, consumerGroup string, topics []string) KafkaConsumer {
-	config := cluster.NewConfig()
-	config.Net.TLS.Enable = false
-	config.ClientID = consumerGroup
-	config.Net.MaxOpenRequests = 200        // allow up to 200 open requests at a time, default is 5
-	config.Net.KeepAlive = time.Second * 30 // keep the connection open for 30 seconds before we hang up. default is no keep alive.
-	config.Group.PartitionStrategy = cluster.StrategyRoundRobin
-	config.Consumer.Return.Errors = false
-	config.Group.Return.Notifications = false
-
-	client, err := cluster.NewClient(kafkaAddrs, config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err_v := config.Validate()
-	if err_v != nil {
-		log.Fatal(err_v)
-	}
-
-	consumer, err_c := cluster.NewConsumerFromClient(client, consumerGroup, topics)
-	if err_c != nil {
-		log.Fatal(err_c)
-	}
-	return KafkaConsumer{Consumer: consumer, Config: config, Client: client}
-}
 
 func ReportInvalidRequest(r render.Render) {
 	r.JSON(400, "Malformed Request")
@@ -77,8 +49,7 @@ func IsAppMatch(potential string, app_name string) bool {
 	return potential == app_name || strings.HasPrefix(potential, app_name+"--")
 }
 
-
-func HealthCheck(client *Storage, kafkaAddrs []string) func(http.ResponseWriter, *http.Request, martini.Params) {
+func HealthCheck(client *Storage) func(http.ResponseWriter, *http.Request, martini.Params) {
 	return func(res http.ResponseWriter, req *http.Request, params martini.Params) {
 		err := (*client).HealthCheck()
 		if err != nil {
@@ -90,6 +61,25 @@ func HealthCheck(client *Storage, kafkaAddrs []string) func(http.ResponseWriter,
 			res.Write([]byte("overall_status=good"))
 		}
 	}
+}
+
+func ContainerToProc(container string) (Process) {
+	proc := Process{App: container, Type: "web"}
+	if strings.Index(container, "--") != -1 {
+		var components = strings.SplitN(container, "--", 2)
+		proc = Process{App: components[0], Type: components[1]}
+	}
+	return proc
+}
+
+func WriteAndFlush(log string, res http.ResponseWriter) (error) {
+	_, err := res.Write([]byte(log))
+	if err != nil {
+		return err
+	} else if f, ok := res.(http.Flusher); ok {
+		f.Flush()
+	}
+	return nil
 }
 
 func KubernetesToHumanReadable(message string) string {
@@ -194,8 +184,6 @@ func ParseWebLogMessage(data []byte, msg *LogSpec) (bool) {
 	msg.Tag = ""
 	return false
 }
-
-
 
 func ParseBuildLogMessage(data []byte, msg *LogSpec) (bool) {
 	var bmsg BuildLogSpec
