@@ -1,5 +1,7 @@
 # Akkeris Log Shuttle and API #
 
+[![CircleCI](https://circleci.com/gh/akkeris/logshuttle.svg?style=svg)](https://circleci.com/gh/akkeris/logshuttle)
+
 The log shuttle allows you to dynamically route logging from your build, app and web logs into a variety of different places by adding `drains` via its JSON API's.  In addition specific low-volume logs (such as systme events, or platform events) can be added to drains via the API as well.
 
 Logs from fluentd within kubernetes, jenkins (via the kafkalogs plugin) from builds and http logs (from any generic F5, nginx or apache server) can be pushed into kafka where logshuttle picks up, parses, and delivers logs to specified end points that can be dynamically added or removed via the log shuttle API.  The end points that logs can be routed to must be a `syslog+tls://`, `syslog+tcp://`, `syslog+udp://` or `https` schema type.  Note that specific meta data must be added to fluentd, jenkins as well as a convention within the http logs in order for logshuttle to properly identify an "app" that should be routed.
