@@ -24,8 +24,8 @@ jobs:
               docker push "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
               if [ "${CIRCLE_BRANCH}" == "master" ]; then
                 docker tag logshuttle "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
-                docker tag logshuttle "docker.io/akkeris/logshuttle:latest
-                docker push "docker.io/akkeris/logshuttle:latest
+                docker tag logshuttle "docker.io/akkeris/logshuttle:latest"
+                docker push "docker.io/akkeris/logshuttle:latest"
                 docker push "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
               fi
             fi
