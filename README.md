@@ -28,6 +28,7 @@ You may need to run `git config --global http.https://gopkg.in.followRedirects t
 
 **Important Kafka Notes**: for the consistency in the ordering of logs (and scalability), the fluentd configuration from kubernetes kicking logs into kafka MUST partition its key based on the container name, in addition there MUST be as many logshuttle instances as there are partitions in kafka and must scale in conjunction for optimal performance.
 
+
 ### Setting up Fluentd App Logs ###
 
 Fluentd is used to push logs from kubernetes into kafka and subsequently into the logshuttle for distribution to one or more syslog end points.  Fluentd should be deployed as a daemon set on your cluster on each node with the recommended configuration (note this assumes fluentd 14), note to use this fluentd configuration the environment variables `ZOO_IPS` a comma delimited list of the kafka broker ips addresses must be set in config map for the fluentd daemonset.  The logshuttle defines an app as a `${deployment name}-${namespace name}` in kubernetes.  So for instance, if you had a namespace "foo" and a deployment within it as "bar" to add a syslog end point via the JSON api the app name would be "bar-foo".
