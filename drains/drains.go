@@ -2,13 +2,13 @@ package drains
 
 import (
 	"bytes"
-	"../syslog"
+	"fmt"
 	"net/http"
-	"time"
 	"strconv"
 	"strings"
 	"sync"
-	"fmt"
+	"time"
+	"../syslog"
 )
 
 type Drain struct {
@@ -121,8 +121,14 @@ func (l *Drain) buffer() {
 	for p := range l.Packets {
 		l.buffered = append(l.buffered, p)
 		if len(l.buffered) >= 500 {
-			l.Drain();
+			l.Drain()
 		}
+	}
+}
+
+func CloseSyslogDrains() {
+	for _, p := range pools {
+		p.Close()
 	}
 }
 
@@ -146,10 +152,12 @@ func InitSyslogDrains() {
 func InitUrlDrains() {
 	drains := make([]*Drain, 0)
 	ticker := time.NewTicker(time.Second * 3)
-	for {
-		for _, d := range drains {
-			d.Drain()
+	go func() {
+		for {
+			for _, d := range drains {
+				d.Drain()
+			}
+			<-ticker.C
 		}
-		<-ticker.C
-	}
+	}()
 }
