@@ -1,4 +1,4 @@
-package main
+package events
 
 import (
 	"errors"
@@ -6,6 +6,11 @@ import (
 	"log"
 	"strings"
 )
+
+type Process struct {
+	App  string `json:"app"`
+	Type string `json:"type"`
+}
 
 func CreateConsumerCluster(kafkaAddrs []string, kafkaGroup string) *kafka.Consumer {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
@@ -35,14 +40,17 @@ type LogConsumer struct {
 func (lc *LogConsumer) Init(kafkaAddrs []string, kafkaGroup string) {
 	lc.address = kafkaAddrs
 	lc.group = kafkaGroup
-	lc.Open()
+	err := lc.Open()
+	if err != nil {
+		log.Fatal("Cannot open connection to kafka: ", err)
+	}
 }
 
 func (lc *LogConsumer) MarkOffset(msg *kafka.Message) {
 	lc.kafkaConsumer.CommitMessage(msg)
 }
 
-func (lc *LogConsumer) RunPooler() {
+func (lc *LogConsumer) runPooler() {
 	for lc.IsOpen == true {
 		ev := lc.kafkaConsumer.Poll(100)
 		if ev == nil {
@@ -80,7 +88,7 @@ func (lc *LogConsumer) Open() error {
 	if lc.IsOpen == true {
 		return errors.New("Unable to open log consumer, its already open.")
 	}
-	if lc.address == nil || len(lc.address) == 0 {
+	if lc.address == nil {
 		return errors.New("invalid address")
 	}
 	if lc.group == "" {
@@ -95,7 +103,7 @@ func (lc *LogConsumer) Open() error {
 	lc.BuildLogs = make(chan *kafka.Message)
 	lc.WebLogs = make(chan *kafka.Message)
 	lc.IsOpen = true
-	go lc.RunPooler()
+	go lc.runPooler()
 	return nil
 }
 

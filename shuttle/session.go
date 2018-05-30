@@ -1,6 +1,7 @@
-package main
+package shuttle
 
 import (
+	"../events"
 	"encoding/json"
 	"fmt"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
@@ -18,8 +19,9 @@ type Session struct {
 	group    string
 }
 
+
 func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
-	var msg LogSpec
+	var msg events.LogSpec
 	if err := json.Unmarshal(e.Value, &msg); err == nil {
 		if IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
 			ls.loops = 0
@@ -35,7 +37,7 @@ func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 }
 
 func (ls *Session) RespondWithWebLog(e *kafka.Message) error {
-	var msg LogSpec
+	var msg events.LogSpec
 	if ParseWebLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
 		ls.loops = 0
 		log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/router: " + msg.Log + "\n"
@@ -48,7 +50,7 @@ func (ls *Session) RespondWithWebLog(e *kafka.Message) error {
 }
 
 func (ls *Session) RespondWithBuildLog(e *kafka.Message) error {
-	var msg LogSpec
+	var msg events.LogSpec
 	if ParseBuildLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
 		ls.loops = 0
 		log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/build: " + msg.Log + "\n"
@@ -70,7 +72,7 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 	ls.loops = 0
 	ls.IsOpen = true
 
-	consumer := CreateConsumerCluster(kafkaAddrs, ls.group)
+	consumer := events.CreateConsumerCluster(kafkaAddrs, ls.group)
 	consumer.SubscribeTopics([]string{ls.space, "alamoweblogs", "alamobuildlogs"}, nil)
 	defer consumer.Close()
 

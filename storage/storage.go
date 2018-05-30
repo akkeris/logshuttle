@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"database/sql"
@@ -6,7 +6,24 @@ import (
 	"errors"
 	"gopkg.in/redis.v4"
 	"time"
+	"fmt"
 )
+
+type Route struct {
+	Id             string    `json:"id"`
+	Space          string    `json:"space"`
+	App            string    `json:"app"`
+	Created        time.Time `json:"created"`
+	Updated        time.Time `json:"updated"`
+	DestinationUrl string    `json:"url"`
+}
+
+type LogSession struct {
+	App   string `json:"app"`
+	Space string `json:"space"`
+	Lines int    `json:lines`
+	Tail  bool   `json:tail`
+}
 
 type Storage interface {
 	HealthCheck() error
@@ -130,6 +147,8 @@ func (rs *PostgresStorage) AddRoutes(routes []Route) (err error) {
 	return nil
 }
 
+
+
 // Redis Interface
 
 type RedisStorage struct {
@@ -229,5 +248,74 @@ func (rs *RedisStorage) AddRoutes(routes []Route) error {
 			return err
 		}
 	}
+	return nil
+}
+
+
+
+// Memory Interface
+
+type MemoryStorage struct {
+	Storage
+	routes []Route
+	sessions map[string]LogSession
+}
+
+func (ms *MemoryStorage) HealthCheck() error {
+	return nil
+}
+
+func (ms *MemoryStorage) Init(url string) error {
+	ms.routes = make([]Route, 0)
+	ms.sessions = make(map[string]LogSession)
+	return nil
+}
+
+func (ms *MemoryStorage) SetSession(key string, value LogSession, duration time.Duration) error {
+	ms.sessions[key] = value
+	return nil
+}
+
+func (ms *MemoryStorage) GetSession(key string) (value LogSession, err error) {
+	return ms.sessions[key], nil
+}
+
+func (ms *MemoryStorage) GetRoutes() ([]Route, error) {
+	return ms.routes, nil
+}
+
+func (ms *MemoryStorage) GetRouteById(Id string) (*Route, error) {
+	routes_pkg, err := ms.GetRoutes()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range routes_pkg {
+		if r.Id == Id {
+			return &r, nil
+		}
+	}
+	return nil, errors.New("No such drain found.")
+}
+
+func (ms *MemoryStorage) RemoveRoute(route Route) error {
+	routes_pkg, _ := ms.GetRoutes()
+	for i, r := range routes_pkg {
+		if r.Id == route.Id {
+			fmt.Printf("id: %v len(ms.routes): %v i: %v\n", route.Id, len(ms.routes), i)
+			ms.routes = append(ms.routes[:i], ms.routes[i+1:]...)
+			fmt.Printf("id: %v len(ms.routes): %v i: %v\n", route.Id, len(ms.routes), i)
+			break;
+		}
+	}
+	return nil
+}
+
+func (ms *MemoryStorage) AddRoute(route Route) error {
+	ms.routes = append(ms.routes, route)
+	return nil
+}
+
+func (ms *MemoryStorage) AddRoutes(routes []Route) error {
+	ms.routes = append(ms.routes, routes...)
 	return nil
 }

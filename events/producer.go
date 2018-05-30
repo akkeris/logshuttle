@@ -1,4 +1,4 @@
-package main
+package events
 
 import (
 	"encoding/json"
@@ -6,7 +6,38 @@ import (
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
 	"strings"
+	"time"
 )
+
+
+type LabelsSpec struct {
+	Name            string `json:"name"`
+	PodTemplateHash string `json:"pod-template-hash"`
+}
+
+type KubernetesSpec struct {
+	NamespaceName string     `json:"namespace_name"`
+	PodId         string     `json:"pod_id"`
+	PodName       string     `json:"pod_name"`
+	ContainerName string     `json:"container_name"`
+	Labels        LabelsSpec `json:"labels"`
+	Host          string     `json:"host"`
+}
+
+type DockerSpec struct {
+	ContainerId string `json:"container_id"`
+}
+
+type LogSpec struct {
+	Log        string         `json:"log"`
+	Stream     string         `json:"stream"`
+	Time       time.Time      `json:"time"`
+	Space      string         `json:"space"`
+	Docker     DockerSpec     `json:"docker"`
+	Kubernetes KubernetesSpec `json:"kubernetes"`
+	Topic      string         `json:"topic"`
+	Tag        string         `json:"tag"`
+}
 
 func CreateProducer(kafkaAddrs []string, kafkaGroup string) *kafka.Producer {
 	c, err := kafka.NewProducer(&kafka.ConfigMap{

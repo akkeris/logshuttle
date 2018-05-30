@@ -1,6 +1,7 @@
 package drains
 
 import (
+	"log"
 	"fmt"
 	"hash/crc32"
 	"strings"
@@ -47,7 +48,7 @@ func (p *Pool) connect(increasePool bool, pressure float64) error {
 		host = strings.Split(Url, "://")[1]
 	}
 
-	fmt.Printf("[pool] Opening connection to %s\n", host)
+	log.Printf("[pool] Opening connection to %s\n", host)
 	dest, err := syslog.Dial("logshuttle.akkeris.local", network, host, nil, time.Second*4, time.Second*4, MaxLogSize)
 	if err != nil {
 		atomic.StoreUint32(&p.Attempting, 0)
@@ -60,7 +61,7 @@ func (p *Pool) connect(increasePool bool, pressure float64) error {
 	p.conns = append(p.conns, dest)
 
 	if increasePool {
-		fmt.Printf("[pool] Increasing pool size for %s to %d because back pressure was %f%%\n", p.destinationUrl, p.OpenConnections(), pressure * 100)
+		log.Printf("[pool] Increasing pool size for %s to %d because back pressure was %f%%\n", p.destinationUrl, p.OpenConnections(), pressure * 100)
 	}
 	atomic.StoreUint32(&p.Attempting, 0)
 	return nil
@@ -72,9 +73,9 @@ func (p *Pool) OpenConnections() uint32 {
 
 func (p *Pool) PrintMetrics() {
 	p.Mutex.Lock()
-	fmt.Printf("[metrics] syslog=%s max#connections=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", p.destinationUrl, p.MaxConnections, p.OpenConnections(), p.Pressure * 100, p.Sent)
+	log.Printf("[metrics] syslog=%s max#connections=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", p.destinationUrl, p.MaxConnections, p.OpenConnections(), p.Pressure * 100, p.Sent)
 	if p.Pressure > 0.98 && p.OpenConnections() == p.MaxConnections {
-		fmt.Printf("[alert] We've reached our maximum allocated connection count %d and our back pressure is still high %f.\n[alert] If this isn't during startup this could mean a loss of log data.\n", p.OpenConnections(), p.Pressure * 100 )
+		log.Printf("[alert] We've reached our maximum allocated connection count %d and our back pressure is still high %f.\n[alert] If this isn't during startup this could mean a loss of log data.\n", p.OpenConnections(), p.Pressure * 100 )
 	}
 	p.Sent = 0
 	p.Mutex.Unlock()
@@ -93,14 +94,14 @@ func (p *Pool) Init(DestinationUrl string) error {
 	p.Mutex = &sync.Mutex{}
 	p.Pressure = 0
 
-	fmt.Printf("[pool] Creating pool to %s\n", p.destinationUrl)
+	log.Printf("[pool] Creating pool to %s\n", p.destinationUrl)
 	for i := 0; i < p.initialConnections; i++ {
 		if i > 0 {
 			// throttle connections so we don't upset our upstream neighbors.
 			time.Sleep(time.Millisecond * 500)
 		}
 		if err := p.connect(false, 0); err != nil {
-			fmt.Printf("[pool] Connection was closed to %s due to %s\n", p.destinationUrl, err)
+			log.Printf("[pool] Connection was closed to %s due to %s\n", p.destinationUrl, err)
 		}
 	}
 	if(p.OpenConnections() == 0) {
@@ -108,7 +109,7 @@ func (p *Pool) Init(DestinationUrl string) error {
 	}
 	go p.writeLoop()
 
-	fmt.Printf("[pool] Pool successfully created for %s\n", p.destinationUrl)
+	log.Printf("[pool] Pool successfully created for %s\n", p.destinationUrl)
 	return nil
 }
 
