@@ -40,10 +40,10 @@ jobs:
       - deploy:
           name: Push application Docker image
           command: |
+            docker login -u $DOCKER_LOGIN -p $DOCKER_PASS
+            docker tag logshuttle "docker.io/akkeris/logshuttle:${CIRCLE_SHA1}"
+            docker push "docker.io/akkeris/logshuttle:${CIRCLE_SHA1}"
             if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              docker login -u $DOCKER_LOGIN -p $DOCKER_PASS
-              docker tag logshuttle "docker.io/akkeris/logshuttle:${CIRCLE_SHA1}"
               docker tag logshuttle "docker.io/akkeris/logshuttle:latest
-              docker push "docker.io/akkeris/logshuttle:${CIRCLE_SHA1}"
               docker push "docker.io/akkeris/logshuttle:latest
             fi
