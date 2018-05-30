@@ -7,19 +7,10 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
-      - restore_cache:
-          keys:
-            - v1-{{ .Branch }}
-          paths:
-            - /caches/app.tar
       - run:
           name: Build application Docker image
           command: |
             docker build -t logshuttle .
-      - save_cache:
-          key: v1-{{ .Branch }}-{{ epoch }}
-          paths:
-            - /caches/app.tar
       - run:
           name: Run tests
           command: |
