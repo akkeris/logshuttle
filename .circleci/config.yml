@@ -13,19 +13,9 @@ jobs:
           paths:
             - /caches/app.tar
       - run:
-          name: Load Docker image layer cache
-          command: |
-            set +o pipefail
-            docker load -i /caches/app.tar | true
-      - run:
           name: Build application Docker image
           command: |
-            docker build --cache-from=logshuttle -t logshuttle .
-      - run:
-          name: Save Docker image layer cache
-          command: |
-            mkdir -p /caches
-            docker save -o /caches/app.tar logshuttle
+            docker build -t logshuttle .
       - save_cache:
           key: v1-{{ .Branch }}-{{ epoch }}
           paths:
@@ -37,10 +27,14 @@ jobs:
       - deploy:
           name: Push application Docker image
           command: |
-            docker login -u $DOCKER_LOGIN -p $DOCKER_PASS
-            docker tag logshuttle "docker.io/akkeris/logshuttle:${CIRCLE_SHA1}"
-            docker push "docker.io/akkeris/logshuttle:${CIRCLE_SHA1}"
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              docker tag logshuttle "docker.io/akkeris/logshuttle:latest
-              docker push "docker.io/akkeris/logshuttle:latest
+            if [ "${CIRCLE_BRANCH}" != "release" ]; then
+              docker login -u $DOCKER_LOGIN -p $DOCKER_PASS
+              docker tag logshuttle "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
+              docker push "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
+              if [ "${CIRCLE_BRANCH}" == "master" ]; then
+                docker tag logshuttle "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
+                docker tag logshuttle "docker.io/akkeris/logshuttle:latest
+                docker push "docker.io/akkeris/logshuttle:latest
+                docker push "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
+              fi
             fi

@@ -1,6 +1,6 @@
-FROM golang:1.10.2-stretch
-RUN apt-get update --yes && apt-get upgrade --yes
-RUN apt-get install --yes pkg-config bash git build-essential
+FROM golang:1.10.2-alpine3.7
+RUN apk update  && apk upgrade
+RUN apk add --no-cache pkgconfig bash git build-base
 RUN git clone https://github.com/edenhill/librdkafka.git && cd librdkafka && git checkout tags/v0.11.4  && ./configure --prefix /usr && make && make install
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
