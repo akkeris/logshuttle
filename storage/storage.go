@@ -6,7 +6,7 @@ import (
 	"errors"
 	"gopkg.in/redis.v4"
 	"time"
-	"fmt"
+	_ "github.com/lib/pq"
 )
 
 type Route struct {
@@ -35,6 +35,7 @@ type Storage interface {
 	RemoveRoute(route Route) error
 	AddRoute(route Route) error
 	AddRoutes([]Route) error
+	Close()
 }
 
 func MarshalRoute(route Route) (string, error) {
@@ -58,6 +59,7 @@ func UnmarshalRoute(route string) (Route, error) {
 type PostgresStorage struct {
 	Storage
 	client *sql.DB
+	open bool
 }
 
 func (rs *PostgresStorage) HealthCheck() error {
@@ -77,26 +79,42 @@ func (rs *PostgresStorage) Init(url string) error {
 	if err != nil {
 		return err
 	}
-	_, err = rs.client.Exec("create table if not exists drains (drain varchar(128) not null primary key, app text not null, space text not null, created timestamptz, updated timestamptz, destination text not null)")
+	_, err = db.Exec("create table if not exists drains (drain varchar(128) not null primary key, app text not null, space text not null, created timestamptz, updated timestamptz, destination text not null)")
 	if err != nil {
 		return err
 	}
-	_, err = rs.client.Exec("create table if not exists sessions (session varchar(128) not null primary key, app text not null, space text not null, lines int, tail boolean, expiration timestamptz default now())")
+	_, err = db.Exec("create table if not exists sessions (session varchar(128) not null primary key, app text not null, space text not null, lines int, tail boolean, expiration timestamptz default now())")
 	if err != nil {
 		return err
 	}
+	rs.open = true
 	rs.client = db
+
+	t := time.NewTicker(time.Second * 60)
+	go func() {
+		for rs.open == true {
+			rs.client.Exec("delete from sessions where expiration < now()")
+			<-t.C
+		}
+	}()
 	return nil
+}
+
+func (rs *PostgresStorage) Close() {
+	if rs.open == true {
+		rs.client.Close()
+	}
+	rs.open = false
 }
 
 func (rs *PostgresStorage) SetSession(key string, value LogSession, duration time.Duration) error {
 	_, err := rs.client.Exec("insert into sessions(session, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6)",
-		key, value.App, value.Space, value.Lines, value.Tail, duration)
+		key, value.App, value.Space, value.Lines, value.Tail, time.Now().Add(duration))
 	return err
 }
 
 func (rs *PostgresStorage) GetSession(key string) (value LogSession, err error) {
-	err = rs.client.QueryRow("select session, app, space, lines, tail where key=$1 and expiration >= now()", key).Scan(&key, &value.App, &value.Space, &value.Lines, &value.Tail)
+	err = rs.client.QueryRow("select session, app, space, lines, tail from sessions where session=$1 and expiration >= now()", key).Scan(&key, &value.App, &value.Space, &value.Lines, &value.Tail)
 	return value, err
 }
 
@@ -122,9 +140,10 @@ func (rs *PostgresStorage) GetRoutes() ([]Route, error) {
 	return routes, nil
 }
 
-func (rs *PostgresStorage) GetRouteById(Id string) (route *Route, err error) {
-	err = rs.client.QueryRow("select drain, app, space, created, updated, destination from drains where drain=$1", Id).Scan(&route.Id, &route.App, &route.Space, &route.Created, &route.Updated, &route.DestinationUrl)
-	return route, err
+func (rs *PostgresStorage) GetRouteById(Id string) (*Route, error) {
+	var route Route
+	err := rs.client.QueryRow("select drain, app, space, created, updated, destination from drains where drain=$1", Id).Scan(&route.Id, &route.App, &route.Space, &route.Created, &route.Updated, &route.DestinationUrl)
+	return &route, err
 }
 
 func (rs *PostgresStorage) RemoveRoute(route Route) error {
@@ -265,6 +284,7 @@ func (ms *MemoryStorage) HealthCheck() error {
 	return nil
 }
 
+// Url is just a dummy interface.
 func (ms *MemoryStorage) Init(url string) error {
 	ms.routes = make([]Route, 0)
 	ms.sessions = make(map[string]LogSession)
@@ -273,11 +293,21 @@ func (ms *MemoryStorage) Init(url string) error {
 
 func (ms *MemoryStorage) SetSession(key string, value LogSession, duration time.Duration) error {
 	ms.sessions[key] = value
+	go func() {
+		t := time.NewTicker(duration)
+		<-t.C
+		delete(ms.sessions, key)
+	}()
 	return nil
 }
 
 func (ms *MemoryStorage) GetSession(key string) (value LogSession, err error) {
-	return ms.sessions[key], nil
+	val, ok := ms.sessions[key]
+	if ok == true {
+		return val, nil
+	} else {
+		return LogSession{}, errors.New("Element was not found.")
+	}
 }
 
 func (ms *MemoryStorage) GetRoutes() ([]Route, error) {
@@ -301,9 +331,7 @@ func (ms *MemoryStorage) RemoveRoute(route Route) error {
 	routes_pkg, _ := ms.GetRoutes()
 	for i, r := range routes_pkg {
 		if r.Id == route.Id {
-			fmt.Printf("id: %v len(ms.routes): %v i: %v\n", route.Id, len(ms.routes), i)
 			ms.routes = append(ms.routes[:i], ms.routes[i+1:]...)
-			fmt.Printf("id: %v len(ms.routes): %v i: %v\n", route.Id, len(ms.routes), i)
 			break;
 		}
 	}

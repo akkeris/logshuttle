@@ -324,10 +324,23 @@ func main() {
 		})
 	}
 
-	// Connect to storage (usually redis) instance
-	var redis storage.RedisStorage
-	redis.Init(strings.Replace(os.Getenv("REDIS_URL"), "redis://", "", 1))
-	var s storage.Storage = &redis
+	// Connect to storage instance
+	var s storage.Storage
+	if os.Getenv("REDIS_URL") != "" {
+		var redis storage.RedisStorage
+		if err := redis.Init(strings.Replace(os.Getenv("REDIS_URL"), "redis://", "", 1)); err != nil {
+			log.Fatalf("Fatal: Cannot connect to redis: %v\n", err)
+		}
+		s = &redis
+	} else if os.Getenv("POSTGRES_URL") != "" {
+		var postgres storage.PostgresStorage
+		if err := postgres.Init(os.Getenv("POSTGRES_URL")); err != nil {
+			log.Fatalf("Fatal: Cannot connect to postgres: %v\n", err)
+		}
+		s = &postgres
+	} else {
+		log.Fatalf("Cannot find REDIS_URL or POSTGRES_URL. Abandoning ship.\n")
+	}
 
 	kafkaAddrs := strings.Split(os.Getenv("KAFKA_HOSTS"), ",")
 	port, err := strconv.Atoi(os.Getenv("PORT"))

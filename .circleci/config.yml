@@ -14,18 +14,20 @@ jobs:
       - run:
           name: Run tests
           command: |
-            docker run logshuttle go test -v ./shuttle
+            docker run logshuttle go test -v ./shuttle ./storage
       - deploy:
           name: Push application Docker image
           command: |
             if [ "${CIRCLE_BRANCH}" != "release" ]; then
-              docker login -u $DOCKER_LOGIN -p $DOCKER_PASS
-              docker tag logshuttle "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
-              docker push "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
-              if [ "${CIRCLE_BRANCH}" == "master" ]; then
-                docker tag logshuttle "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
-                docker tag logshuttle "docker.io/akkeris/logshuttle:latest
-                docker push "docker.io/akkeris/logshuttle:latest
-                docker push "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
+              if [ "${CIRCLE_PROJECT_USERNAME}" == "akkeris" ]; then 
+                docker login -u $DOCKER_LOGIN -p $DOCKER_PASS
+                docker tag logshuttle "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
+                docker push "docker.io/akkeris/logshuttle:${CIRCLE_BRANCH}-${CIRCLE_BUILD_NUM}"
+                if [ "${CIRCLE_BRANCH}" == "master" ]; then
+                  docker tag logshuttle "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
+                  docker tag logshuttle "docker.io/akkeris/logshuttle:latest"
+                  docker push "docker.io/akkeris/logshuttle:latest"
+                  docker push "docker.io/akkeris/logshuttle:release-${CIRCLE_BUILD_NUM}"
+                fi
               fi
             fi
