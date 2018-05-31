@@ -29,7 +29,7 @@ func CreateRedisStorage() (*Storage) {
 	return &s
 }
 
-func TestShuttle(t *testing.T) {
+func TestStorage(t *testing.T) {
 	Convey("MemoryStorage: Ensure we can add a route to memory storage.", t, func() {
 		memstr := CreateMemoryStorage()
 		created := time.Now()
