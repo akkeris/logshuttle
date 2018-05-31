@@ -36,7 +36,7 @@ func PrintMetrics() {
 	pool_mutex.Unlock()
 }
 
-func Dial(kafkaGroup string, Url string) (*Drain, error) {
+func Dial(Url string) (*Drain, error) {
 	if strings.HasPrefix(Url, "http://") || strings.HasPrefix(Url, "https://") {
 		drain := &Drain{
 			Url:      Url,
