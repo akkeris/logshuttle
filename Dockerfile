@@ -6,6 +6,7 @@ RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 RUN go get "github.com/rcrowley/go-metrics"
 RUN go get gopkg.in/redis.v4
+RUN go get "github.com/lib/pq"
 RUN go get github.com/go-martini/martini
 RUN go get github.com/martini-contrib/auth
 RUN go get github.com/martini-contrib/binding
