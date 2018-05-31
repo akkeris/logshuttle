@@ -30,6 +30,9 @@ type Shuttle struct {
 
 func (sh *Shuttle) PrintMetrics() {
 	log.Printf("[metrics] count#logs_sent=%d count#logs_received=%d count#failed_decode=%d count#goroutines=%d\n", sh.sent, sh.received, sh.failed_decode, runtime.NumGoroutine())
+	sh.sent = 0
+	sh.received = 0
+	sh.failed_decode = 0
 }
 
 func (sh *Shuttle) Refresh() {
@@ -179,7 +182,7 @@ func (sh *Shuttle) RefreshRoutes() {
 					}
 					sh.routes_mutex.Unlock()
 					if duplicate == false {
-						d, err := drains.Dial(sh.kafka_group, rts.DestinationUrl)
+						d, err := drains.Dial(rts.DestinationUrl)
 						if err == nil {
 							sh.routes_mutex.Lock()
 							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], d)
