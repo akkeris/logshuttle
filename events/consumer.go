@@ -42,11 +42,14 @@ func (lc *LogConsumer) Init(kafkaAddrs []string, kafkaGroup string) {
 	lc.group = kafkaGroup
 	err := lc.Open()
 	if err != nil {
-		log.Fatal("Cannot open connection to kafka: ", err)
+		log.Fatalln("Cannot open connection to kafka: ", err)
 	}
 }
 
 func (lc *LogConsumer) MarkOffset(msg *kafka.Message) {
+	if lc.IsOpen == false {
+		return
+	}
 	lc.kafkaConsumer.CommitMessage(msg)
 }
 
@@ -69,6 +72,23 @@ func (lc *LogConsumer) runPooler() {
 			}
 		case kafka.Error:
 			log.Printf("%% Error: %v\n", msg)
+			lc.IsOpen = false
+			var count = 0
+			for lc.kafkaConsumer.Poll(10) != nil && count < 100 {
+				// Do nothing, see: https://github.com/confluentinc/confluent-kafka-go/issues/189
+				count++
+			}
+			if count == 100 {
+				log.Fatalln("Error: Cannot drain pool to close consumer, hard stop.")
+			}
+			lc.kafkaConsumer.Close()
+			lc.kafkaConsumer = CreateConsumerCluster(lc.address, lc.group)
+			err := lc.kafkaConsumer.SubscribeTopics([]string{"^.*$"}, nil)
+			if err != nil {
+				log.Fatalln("Fatal, cannot recover from", err)
+			}
+			lc.IsOpen = true
+			log.Printf("Recovered, resuming listening.")
 		default:
 			// do nothing, ignore the message.
 		}
@@ -76,6 +96,9 @@ func (lc *LogConsumer) runPooler() {
 }
 
 func (lc *LogConsumer) Refresh() error {
+	if lc.IsOpen == false {
+		return nil
+	}
 	err := lc.kafkaConsumer.SubscribeTopics([]string{"^.*$"}, nil)
 	if err != nil {
 		log.Println("Error listening to all topics", err)
