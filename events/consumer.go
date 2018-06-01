@@ -69,7 +69,6 @@ func (lc *LogConsumer) runPooler() {
 			}
 		case kafka.Error:
 			log.Printf("%% Error: %v\n", msg)
-			lc.Close()
 		default:
 			// do nothing, ignore the message.
 		}
