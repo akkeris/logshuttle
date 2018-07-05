@@ -8,14 +8,14 @@ Logs from fluentd within kubernetes, jenkins (via the kafkalogs plugin) from bui
 
 ## Setting Up ##
 
-You may need to run `git config --global http.https://gopkg.in.followRedirects true` as golang has an issue following redirects on gopkg.in.
+You may need to run `git config --global http.https://gopkg.in.followRedirects true` as golang has an issue following redirects on gopkg.in. Official docker images can be found on [docker.io](https://hub.docker.com/r/akkeris/logshuttle/tags/)
 
 ### General Settings ###
 
 - **TEST_MODE** - If set to any value this sets the logshuttle into testing mode that will give it a consumer group name different than the normal log shuttle to not interfer with existing logshuttles; in addition it will override the host in all outgoing destinations to "logshuttle-test" so that it will not be collected (or at a bare minimum, it can be extracted) from existing log end points.
 - **PORT** - Defaults to 5000, the port to listen to for API calls.
 - **RUN_SESSION** - Indicates if we wish to use the log session end point rather than the log shuttle end point (See Log Session below for rational), if you're looking to shuttle logs do not enable this. If you do want a log session end point (and a log session end point only) set this to 1.  Note enabling this will disable the log shuttle end point.  These two end points are mutually exclusive due to the burden it puts on the app and the completely separate types of workloads shuttling vs. sessions need to do.
-- **SESSION_HOST** - This should be set to the log sessions public dns host e.g., logsession.example.com
+- **SESSION_URL** - This should be set to the log sessions public dns host e.g., https://logsession.example.com
 
 ### Storage Settings ###
 
