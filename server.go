@@ -235,7 +235,7 @@ func CreateLogSession(client *storage.Storage) func(martini.Params, storage.LogS
 			ReportError(r, err)
 			return
 		}
-		r.JSON(201, map[string]interface{}{"id": id.String()})
+		r.JSON(201, map[string]interface{}{"id": id.String(), "logplex_url": os.Getenv("SESSION_URL") + "/log-sessions/" + id.String()})
 	}
 }
 
