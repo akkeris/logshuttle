@@ -82,7 +82,7 @@ func (p *Pool) PrintMetrics() {
 }
 
 func (p *Pool) Init(DestinationUrl string) error {
-	p.MaxConnections = 20
+	p.MaxConnections = 40
 	p.initialConnections = 1
 	p.bufferSize = 512
 	p.destinationUrl = DestinationUrl
