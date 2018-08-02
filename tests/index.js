@@ -1,14 +1,15 @@
 const http = require('http')
 const https = require('https')
 const url = require('url')
-const time_between_tests = process.env.WAIT_BETWEEN_TESTS || (60 * 1000)
-const timeout_for_test = process.env.TIMEOUT_FOR_TEST || (2 * 1000)
 const system_name = process.env.ALAMO_APPLICATION
 const system_uri = process.env.URL
 console.assert(system_uri && system_uri !== "", 'No URL was provided.')
 const papertrail_token = process.env.PAPERTRAIL_TOKEN
 const influxdb = process.env.INFLUXDB
 const port = process.env.PORT || 9000
+
+const timeout_on_search = parseInt(process.env.TIMEOUT_ON_SEARCH || '3600', 10)
+const time_to_failure = parseInt(process.env.TIME_TO_FAILURE || '60', 10)
 
 let search_for_app_ids = []
 let search_for_http_ids = []
@@ -68,8 +69,9 @@ async function search_for_record(search_items, data, label) {
     let should_keep = true
     let begin_date = new Date(item.time)
     let now_time = new Date()
-    if ((now_time.getTime() - begin_date.getTime())/1000 > 60) {
-      let drift = (now_time.getTime() - begin_date.getTime()) / 1000
+    let drift = (now_time.getTime() - begin_date.getTime()) / 1000
+    if (drift > timeout_on_search) {
+      // We did not find the record, even after waiting for TIMEOUT_TO_SEARCH
       await record(system_name, label, false, drift, begin_date, now_time)
       console.log("Failed to receive:", item.id, item.time)
       should_keep = false
@@ -78,8 +80,15 @@ async function search_for_record(search_items, data, label) {
       let event = data.events[i]
       if(event.message.indexOf(item.id) > -1) {
         let end_date = new Date(Date.parse(event.received_at)) // also has generated_at timestamp.
-        let drift = (end_date.getTime() - begin_date.getTime()) / 1000
-        await record(system_name, label, true, drift, begin_date, end_date)
+        let recorded_drift = (end_date.getTime() - begin_date.getTime()) / 1000
+        if(recorded_drift > time_to_failure) {
+          // We found the record but it was received so late that we must mark it 
+          // as a failure
+          await record(system_name, label, false, drift, begin_date, end_date)
+          console.log("Slow to receive (failure):", item.id, item.time)
+        } else {
+          await record(system_name, label, true, drift, begin_date, end_date)
+        }
         should_keep = false
       }
     }
