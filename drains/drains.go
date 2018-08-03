@@ -16,6 +16,9 @@ type Drain struct {
 	Packets  chan syslog.Packet
 	buffered []syslog.Packet
 	frame    int
+	// depending on the type either pool is used (for syslog),
+	// or client (for http), the http client internally handles
+	// its own keep alives, we just need to reuse it as a client
 	pool 	 *Pool
 	trans    *http.Transport
 	client   *http.Client
