@@ -17,6 +17,9 @@ type Drain struct {
 	buffered []syslog.Packet
 	frame    int
 	pool 	 *Pool
+	trans    *http.Transport
+	client   *http.Client
+	mutex 	 *sync.Mutex
 }
 
 var drains []*Drain;
@@ -42,7 +45,10 @@ func Dial(Url string) (*Drain, error) {
 			Url:      Url,
 			Packets:  make(chan syslog.Packet),
 			buffered: make([]syslog.Packet, 0),
-			frame:    0}
+			frame:    0,
+			client:   &http.Client{Transport: &http.Transport{MaxIdleConns: 10, IdleConnTimeout: 30 * time.Second}},
+			mutex:    &sync.Mutex{},
+		}
 
 		go drain.buffer()
 
@@ -102,8 +108,6 @@ func (l *Drain) Drain() {
 
 	l.buffered = make([]syslog.Packet, 0)
 	l.frame++
-	tr := &http.Transport{MaxIdleConns: 10, IdleConnTimeout: 30 * time.Second}
-	client := &http.Client{Transport: tr}
 
 	req, err := http.NewRequest(http.MethodPost, l.Url, bytes.NewBufferString(body))
 	if err == nil {
@@ -111,10 +115,12 @@ func (l *Drain) Drain() {
 		req.Header.Add("Logplex-Frame-Id", strconv.Itoa(l.frame))
 		req.Header.Add("User-Agent", "Logplex/v72")
 		req.Header.Add("Content-Type", "application/logplex-1")
-		res, err := client.Do(req)
+		l.mutex.Lock()
+		res, err := l.client.Do(req)
 		if err != nil {
 			res.Body.Close()
 		}
+		l.mutex.Unlock()
 	} else {
 		fmt.Printf("[drains] Error getting a drain: %s", err);
 	}
