@@ -111,7 +111,10 @@ func (l *Drain) Drain() {
 		req.Header.Add("Logplex-Frame-Id", strconv.Itoa(l.frame))
 		req.Header.Add("User-Agent", "Logplex/v72")
 		req.Header.Add("Content-Type", "application/logplex-1")
-		client.Do(req)
+		res, err := client.Do(req)
+		if err != nil {
+			res.Body.Close()
+		}
 	} else {
 		fmt.Printf("[drains] Error getting a drain: %s", err);
 	}
