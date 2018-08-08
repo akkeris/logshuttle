@@ -20,7 +20,7 @@ type Shuttle struct {
 	received      int
 	failed_decode int
 	test_mode     bool
-	routes        map[string][]*drains.Drain
+	routes        map[string][]drains.Drain
 	routes_mutex  *sync.Mutex
 	kafka_group   string
 	kafka_addrs   string
@@ -89,7 +89,7 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 	sh.client = client
 	sh.routes_mutex = &sync.Mutex{}
 	sh.routes_mutex.Lock()
-	sh.routes = make(map[string][]*drains.Drain)
+	sh.routes = make(map[string][]drains.Drain)
 	sh.routes_mutex.Unlock()
 	sh.RefreshRoutes()
 	sh.consumer.Init(kafkaAddrs, kafkaGroup)
@@ -137,7 +137,7 @@ func (sh *Shuttle) SendMessage(message events.LogSpec) {
 			Time:     message.Time,
 			Message:  KubernetesToHumanReadable(message.Log),
 		}
-		d.Packets <- p
+		d.Packets() <- p
 		sh.sent++
 	}
 }
@@ -163,7 +163,7 @@ func (sh *Shuttle) RefreshRoutes() {
 		sh.routes_mutex.Lock()
 		if sh.routes[rt.App+rt.Space] != nil {
 			for _, extr := range sh.routes[rt.App+rt.Space] {
-				if extr.Url == rt.DestinationUrl {
+				if extr.Url() == rt.DestinationUrl {
 					found = true
 				}
 			}
@@ -176,13 +176,13 @@ func (sh *Shuttle) RefreshRoutes() {
 					var duplicate = false
 					sh.routes_mutex.Lock()
 					for _, sr := range sh.routes[rts.App+rts.Space] {
-						if sr.Url == rts.DestinationUrl {
+						if sr.Url() == rts.DestinationUrl {
 							duplicate = true
 						}
 					}
 					sh.routes_mutex.Unlock()
 					if duplicate == false {
-						d, err := drains.Dial(rts.DestinationUrl)
+						d, err := drains.Dial(rts.Id, rts.DestinationUrl)
 						if err == nil {
 							sh.routes_mutex.Lock()
 							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], d)

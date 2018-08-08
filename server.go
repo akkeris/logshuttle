@@ -258,8 +258,7 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 	logProducer.Init(kafkaAddrs, kafkaGroup)
 
 	// Load routes
-	drains.InitSyslogDrains()
-	drains.InitUrlDrains()
+	drains.Init()
 
 	var logShuttle shuttle.Shuttle
 	logShuttle.Init(client, kafkaAddrs, kafkaGroup)
@@ -279,7 +278,7 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 		<-sigchan
 		t.Stop()
 		log.Println("[info] Shutting down, timer stopped.")
-		drains.CloseSyslogDrains()
+		drains.Close()
 		log.Println("[info] Closed syslog drains.")
 		logProducer.Close()
 		log.Println("[info] Closed producer.")
