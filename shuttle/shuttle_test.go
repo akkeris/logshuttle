@@ -68,15 +68,17 @@ func CreateHTTPTestChannel(channel syslog.LogPartsChannel)  func(http.ResponseWr
 		}
 		lines := strings.Split(string(bytes), "\n")
 		for _, line := range lines {
-			ind := strings.Index(line, " ") + 1
-			line := line[ind:len(line)]
-			parser := syslog.RFC5424.GetParser(([]byte)(line))
-			err := parser.Parse()
-			if err != nil {
-				log.Fatalln(err)
+			if line != "" {
+				ind := strings.Index(line, " ") + 1
+				line := line[ind:len(line)]
+				parser := syslog.RFC5424.GetParser(([]byte)(line))
+				err := parser.Parse()
+				if err != nil {
+					log.Fatalln(err)
+				}
+				logParts := parser.Dump()
+				channel <- logParts
 			}
-			logParts := parser.Dump()
-			channel <- logParts
 		}
 		req.Body.Close()
 		res.Write(([]byte)("OK"))
@@ -161,7 +163,7 @@ func TestShuttle(t *testing.T) {
 
 	Convey("Ensure refresh doesnt botch the routes", t, func() {
 		shuttle.Refresh()
-		So(len(shuttle.routes), ShouldEqual, 2)
+		So(len(shuttle.routes), ShouldEqual, 3)
 	})
 
 	Convey("Ensure adding a bad route doesnt get acknowledged.", t, func() {
@@ -169,7 +171,7 @@ func TestShuttle(t *testing.T) {
 		shuttle.Refresh()
 		(*mem).AddRoute(storage.Route{Id:"test", Space:"space", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://10.243.243.243:10"})
 		shuttle.Refresh()
-		So(len(shuttle.routes), ShouldEqual, 2)
+		So(len(shuttle.routes), ShouldEqual, 3)
 		So(len(shuttle.routes["appspace"]), ShouldEqual, 1)
 		So(len(shuttle.routes["appspace2"]), ShouldEqual, 1)
 	})
