@@ -47,13 +47,15 @@ func Dial(Id string, Url string) (Drain, error) {
 	}
 	bad_hosts_mutex.Unlock()
 
+	// This lock must remain above this line.
+	drains_mutex.Lock()
+	defer drains_mutex.Unlock()
+
 	// If we already have a pool for this, go ahead and return.
 	if _, ok := drains[Url]; ok {
 		drains_count[Url] = drains_count[Url] + 1
 		return drains[Url], nil
 	}
-	drains_mutex.Lock()
-	defer drains_mutex.Unlock()
 
 	var drain Drain = nil
 	if strings.HasPrefix(Url, "http://") || strings.HasPrefix(Url, "https://") {
@@ -96,10 +98,14 @@ func Undial(Id string, Url string) (error) {
 			if drain, ok := drains[Url]; ok {
 				go drain.Close()
 				delete(drains, Url)
+				var index_to_remove = -1
 				for i, drain_key := range drain_keys {
 					if drain_key == Url {
-						drain_keys = append(drain_keys[:i], drain_keys[i+1:]...)
+						index_to_remove = i
 					}
+				}
+				if index_to_remove != -1 {
+					drain_keys = append(drain_keys[:index_to_remove], drain_keys[index_to_remove+1:]...)
 				}
 			} else {
 				return fmt.Errorf("Unable to find active drains for record %s with url %s", Id, Url)
@@ -113,7 +119,9 @@ func Undial(Id string, Url string) (error) {
 
 func CloseAll() {
 	for _, drain := range drain_keys {
+		fmt.Printf("[drains] Closing drain to %s...", drain)
 		drains[drain].Close()
+		fmt.Printf("\n")
 	}
 }
 

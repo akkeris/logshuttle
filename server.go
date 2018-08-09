@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"math/rand"
 )
 
 
@@ -315,6 +316,12 @@ func main() {
 	if os.Getenv("TEST_MODE") != "" {
 		log.Printf("Using kafka group logshuttle-testing for testing purposes...\n")
 		kafkaGroup = "logshuttletest"
+	} else {
+		// Purposely wait a random amount of time to allow 
+		// kafka to more easily balance more than one logshuttle, if the
+		// connection between kafka is too close, partition assignment
+		// can sometimes take a very long time. Seems odd, but helps.
+		time.Sleep(time.Duration(rand.Intn(30)) * time.Second)
 	}
 	if os.Getenv("STACKIMPACT") != "" {
 		stackimpact.Start(stackimpact.Options{
