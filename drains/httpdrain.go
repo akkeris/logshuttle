@@ -65,6 +65,10 @@ func (l *HttpDrain) Url() string {
 	return l.url
 }
 
+func (l *HttpDrain) Id() string {
+	return l.id
+}
+
 func (l *HttpDrain) PrintMetrics() {
 	log.Printf("[metrics] syslog=%s://%s%s max#connections=-1 count#errors=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", l.pretty_url.Scheme, l.pretty_url.Host, l.pretty_url.Path, l.errors, l.conns, l.pressure * 100, l.sent)
 	l.sent = 0

@@ -12,6 +12,7 @@ import (
 )
 
 type SyslogDrain struct {
+	id string
 	MaxConnections uint32
 	initialConnections int
 	bufferSize int
@@ -27,6 +28,10 @@ type SyslogDrain struct {
 
 func (l *SyslogDrain) Url() (string) {
 	return l.destinationUrl
+}
+
+func (l *SyslogDrain) Id() string {
+	return l.id
 }
 
 func (l *SyslogDrain) Packets() (chan syslog.Packet) {
@@ -94,6 +99,7 @@ func (p *SyslogDrain) Flush() {
 }
 
 func (p *SyslogDrain) Init(Id string, DestinationUrl string) error {
+	p.id = Id
 	p.MaxConnections = 40
 	p.initialConnections = 1
 	p.bufferSize = 512
@@ -126,10 +132,10 @@ func (p *SyslogDrain) Init(Id string, DestinationUrl string) error {
 }
 
 func (p *SyslogDrain) Close() {
+	p.stopChan <- struct{}{}
 	for i := 0; i < int(p.OpenConnections()); i++ {
 		p.conns[i].Close()
 	}
-	p.stopChan <- struct{}{}
 }
 
 func (p *SyslogDrain) writeLoop() {

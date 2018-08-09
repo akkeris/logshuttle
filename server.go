@@ -278,12 +278,12 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 		<-sigchan
 		t.Stop()
 		log.Println("[info] Shutting down, timer stopped.")
-		drains.Close()
-		log.Println("[info] Closed syslog drains.")
 		logProducer.Close()
 		log.Println("[info] Closed producer.")
 		logShuttle.Close()
 		log.Println("[info] Closed consumer.")
+		drains.CloseAll()
+		log.Println("[info] Closed syslog drains.")
 		os.Exit(0)
 	}()
 	for {
