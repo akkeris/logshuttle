@@ -15,12 +15,19 @@ import (
 // TODO: Connect on demand (but deal with bad hosts will be tricky)
 // TODO: Mark in storage errors connecting to syslog or drains
 
+
+type Destination struct {
+	route 		  storage.Route
+	drain		  drains.Drain
+}
+
 type Shuttle struct {
 	sent          int
 	received      int
 	failed_decode int
 	test_mode     bool
-	routes        map[string][]*drains.Drain
+	routes        map[string][]Destination
+	route_keys 	  []string
 	routes_mutex  *sync.Mutex
 	kafka_group   string
 	kafka_addrs   string
@@ -89,7 +96,8 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 	sh.client = client
 	sh.routes_mutex = &sync.Mutex{}
 	sh.routes_mutex.Lock()
-	sh.routes = make(map[string][]*drains.Drain)
+	sh.routes = make(map[string][]Destination)
+	sh.route_keys = make([]string, 0)
 	sh.routes_mutex.Unlock()
 	sh.RefreshRoutes()
 	sh.consumer.Init(kafkaAddrs, kafkaGroup)
@@ -137,7 +145,7 @@ func (sh *Shuttle) SendMessage(message events.LogSpec) {
 			Time:     message.Time,
 			Message:  KubernetesToHumanReadable(message.Log),
 		}
-		d.Packets <- p
+		d.drain.Packets() <- p
 		sh.sent++
 	}
 }
@@ -157,13 +165,14 @@ func (sh *Shuttle) RefreshRoutes() {
 		return
 	}
 
+	// Add new routes not found.
 	wg := new(sync.WaitGroup)
 	for _, rt := range routesPkg {
 		var found = false
 		sh.routes_mutex.Lock()
 		if sh.routes[rt.App+rt.Space] != nil {
 			for _, extr := range sh.routes[rt.App+rt.Space] {
-				if extr.Url == rt.DestinationUrl {
+				if extr.route.Id == rt.Id {
 					found = true
 				}
 			}
@@ -176,20 +185,30 @@ func (sh *Shuttle) RefreshRoutes() {
 					var duplicate = false
 					sh.routes_mutex.Lock()
 					for _, sr := range sh.routes[rts.App+rts.Space] {
-						if sr.Url == rts.DestinationUrl {
+						if sr.drain.Url() == rts.DestinationUrl {
 							duplicate = true
 						}
 					}
 					sh.routes_mutex.Unlock()
 					if duplicate == false {
-						d, err := drains.Dial(rts.DestinationUrl)
+						d, err := drains.Dial(rts.Id, rts.DestinationUrl)
 						if err == nil {
 							sh.routes_mutex.Lock()
-							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], d)
+							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], Destination{drain:d, route:rts})
+							var found_key = false
+							for _, v := range sh.route_keys {
+								if v == rts.App + rts.Space {
+									found_key = true
+								}
+							}
+							if found_key == false {
+								sh.route_keys = append(sh.route_keys, rts.App+rts.Space)
+							}
 							sh.routes_mutex.Unlock()
 							log.Printf("[shuttle] Adding route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
+						} else if err.Error() != "Host is part of a bad host list." {
+							log.Printf("[shuttle] Cannot add route: %s-%s -> %s, (%s) will retry in 5 minutes\n", rts.App, rts.Space, rts.DestinationUrl, err.Error())
 						}
-						// TODO: Report errors on failed routes.
 					} else {
 						log.Printf("[shuttle] Not adding duplicate route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
 					}
@@ -197,7 +216,35 @@ func (sh *Shuttle) RefreshRoutes() {
 			}(rt)
 		}
 	}
-	// TODO: do the reverse, see if any routes have been removed and close
-	// their dials.
 	wg.Wait()
+
+	// Remove routes no longer in storage
+	sh.routes_mutex.Lock()
+	for _, route_key := range sh.route_keys {
+		if destinations, ok := sh.routes[route_key]; ok && len(destinations) > 0 {
+			for ndx, destination := range destinations {
+				var found = false
+				for _, rt := range routesPkg {
+					if rt.Id == destination.route.Id {
+						found = true
+					}
+				}
+				if found == false {
+					log.Printf("[shuttle] Removing route: %s-%s -> %s\n", destination.route.App, destination.route.Space, destination.drain.Url())
+					err := drains.Undial(destination.drain.Id(), destination.drain.Url())
+					if len(destinations) == 1 {
+						sh.routes[route_key] = make([]Destination, 0)
+					} else {
+						sh.routes[route_key] = append(destinations[:ndx], destinations[ndx+1:]...)
+					}
+					if err != nil {
+						log.Printf("[shuttle] Unable to remove stale drains for %s and %s\n", destination.drain.Id(), destination.drain.Url())
+					}
+				}
+			}
+		}
+	}
+	sh.routes_mutex.Unlock()
+
+		
 }

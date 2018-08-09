@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"math/rand"
 )
 
 
@@ -235,7 +236,7 @@ func CreateLogSession(client *storage.Storage) func(martini.Params, storage.LogS
 			ReportError(r, err)
 			return
 		}
-		r.JSON(201, map[string]interface{}{"id": id.String()})
+		r.JSON(201, map[string]interface{}{"id": id.String(), "logplex_url": os.Getenv("SESSION_URL") + "/log-sessions/" + id.String()})
 	}
 }
 
@@ -258,8 +259,7 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 	logProducer.Init(kafkaAddrs, kafkaGroup)
 
 	// Load routes
-	drains.InitSyslogDrains()
-	drains.InitUrlDrains()
+	drains.Init()
 
 	var logShuttle shuttle.Shuttle
 	logShuttle.Init(client, kafkaAddrs, kafkaGroup)
@@ -279,12 +279,12 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 		<-sigchan
 		t.Stop()
 		log.Println("[info] Shutting down, timer stopped.")
-		drains.CloseSyslogDrains()
-		log.Println("[info] Closed syslog drains.")
 		logProducer.Close()
 		log.Println("[info] Closed producer.")
 		logShuttle.Close()
 		log.Println("[info] Closed consumer.")
+		drains.CloseAll()
+		log.Println("[info] Closed syslog drains.")
 		os.Exit(0)
 	}()
 	for {
@@ -316,6 +316,12 @@ func main() {
 	if os.Getenv("TEST_MODE") != "" {
 		log.Printf("Using kafka group logshuttle-testing for testing purposes...\n")
 		kafkaGroup = "logshuttletest"
+	} else {
+		// Purposely wait a random amount of time to allow 
+		// kafka to more easily balance more than one logshuttle, if the
+		// connection between kafka is too close, partition assignment
+		// can sometimes take a very long time. Seems odd, but helps.
+		time.Sleep(time.Duration(rand.Intn(30)) * time.Second)
 	}
 	if os.Getenv("STACKIMPACT") != "" {
 		stackimpact.Start(stackimpact.Options{
