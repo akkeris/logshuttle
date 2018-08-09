@@ -202,9 +202,9 @@ func TestShuttle(t *testing.T) {
 		err = (*mem).RemoveRoute(udp_route)
 		So(err, ShouldEqual, nil)
 		shuttle.Refresh()
-		route, ok := shuttle.routes["appspace"]
-		So(ok, ShouldEqual, false)
-		So(route, ShouldEqual, nil)
+		routes, ok := shuttle.routes["appspace"]
+		So(ok, ShouldEqual, true)
+		So(len(routes), ShouldEqual, 0)
 		CreateMessage(shuttle, "app", "space", "Oh hello.", "stdout")
 		So(len(udp), ShouldEqual, 0)
 		count, err = drains.DrainCount(udp_route.DestinationUrl)
@@ -213,7 +213,6 @@ func TestShuttle(t *testing.T) {
 	})
 
 	Convey("Ensure two routes with the same drain, removing one route doesnt remove the drain", t, func() {
-
 		route1 := storage.Route{Id:"test55", Space:"space5", App:"app1", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11515"}
 		route2 := storage.Route{Id:"test66", Space:"space6", App:"app2", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11515"}
 		(*mem).AddRoute(route1)

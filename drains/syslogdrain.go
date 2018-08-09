@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 	"../syslog"
+	"os"
+	"strconv"
 )
 
 type SyslogDrain struct {
@@ -101,6 +103,11 @@ func (p *SyslogDrain) Flush() {
 func (p *SyslogDrain) Init(Id string, DestinationUrl string) error {
 	p.id = Id
 	p.MaxConnections = 40
+	max_conns, err := strconv.Atoi(os.Getenv("MAX_SYSLOG_CONNECTIONS"))
+	if err == nil && max_conns > 0 && max_conns < 1025 {
+		p.MaxConnections = uint32(max_conns)
+	}
+	
 	p.initialConnections = 1
 	p.bufferSize = 512
 	p.destinationUrl = DestinationUrl

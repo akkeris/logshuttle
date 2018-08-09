@@ -15,12 +15,18 @@ import (
 // TODO: Connect on demand (but deal with bad hosts will be tricky)
 // TODO: Mark in storage errors connecting to syslog or drains
 
+
+type Destination struct {
+	route 		  storage.Route
+	drain		  drains.Drain
+}
+
 type Shuttle struct {
 	sent          int
 	received      int
 	failed_decode int
 	test_mode     bool
-	routes        map[string][]drains.Drain
+	routes        map[string][]Destination
 	route_keys 	  []string
 	routes_mutex  *sync.Mutex
 	kafka_group   string
@@ -90,7 +96,7 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 	sh.client = client
 	sh.routes_mutex = &sync.Mutex{}
 	sh.routes_mutex.Lock()
-	sh.routes = make(map[string][]drains.Drain)
+	sh.routes = make(map[string][]Destination)
 	sh.route_keys = make([]string, 0)
 	sh.routes_mutex.Unlock()
 	sh.RefreshRoutes()
@@ -139,7 +145,7 @@ func (sh *Shuttle) SendMessage(message events.LogSpec) {
 			Time:     message.Time,
 			Message:  KubernetesToHumanReadable(message.Log),
 		}
-		d.Packets() <- p
+		d.drain.Packets() <- p
 		sh.sent++
 	}
 }
@@ -166,7 +172,7 @@ func (sh *Shuttle) RefreshRoutes() {
 		sh.routes_mutex.Lock()
 		if sh.routes[rt.App+rt.Space] != nil {
 			for _, extr := range sh.routes[rt.App+rt.Space] {
-				if extr.Url() == rt.DestinationUrl {
+				if extr.route.Id == rt.Id {
 					found = true
 				}
 			}
@@ -179,7 +185,7 @@ func (sh *Shuttle) RefreshRoutes() {
 					var duplicate = false
 					sh.routes_mutex.Lock()
 					for _, sr := range sh.routes[rts.App+rts.Space] {
-						if sr.Url() == rts.DestinationUrl {
+						if sr.drain.Url() == rts.DestinationUrl {
 							duplicate = true
 						}
 					}
@@ -188,8 +194,16 @@ func (sh *Shuttle) RefreshRoutes() {
 						d, err := drains.Dial(rts.Id, rts.DestinationUrl)
 						if err == nil {
 							sh.routes_mutex.Lock()
-							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], d)
-							sh.route_keys = append(sh.route_keys, rts.App+rts.Space)
+							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], Destination{drain:d, route:rts})
+							var found_key = false
+							for _, v := range sh.route_keys {
+								if v == rts.App + rts.Space {
+									found_key = true
+								}
+							}
+							if found_key == false {
+								sh.route_keys = append(sh.route_keys, rts.App+rts.Space)
+							}
 							sh.routes_mutex.Unlock()
 							log.Printf("[shuttle] Adding route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
 						} else if err.Error() != "Host is part of a bad host list." {
@@ -206,23 +220,27 @@ func (sh *Shuttle) RefreshRoutes() {
 
 	// Remove routes no longer in storage
 	sh.routes_mutex.Lock()
-	for ndx, route_key := range sh.route_keys {
-		var found = false
-		for _, rt := range routesPkg {
-			if rt.App + rt.Space == route_key {
-				found = true
-			}
-		}
-		if found == false {
-			sh.route_keys = append(sh.route_keys[:ndx], sh.route_keys[ndx+1:]...)
-			if active_routes, ok := sh.routes[route_key]; ok {
-				for _, active_route := range active_routes {
-					err := drains.Undial(active_route.Id(), active_route.Url())
-					if err != nil {
-						log.Printf("[shuttle] Unable to remove stale drains for %s and %s\n", active_route.Id(), active_route.Url())
+	for _, route_key := range sh.route_keys {
+		if destinations, ok := sh.routes[route_key]; ok && len(destinations) > 0 {
+			for ndx, destination := range destinations {
+				var found = false
+				for _, rt := range routesPkg {
+					if rt.Id == destination.route.Id {
+						found = true
 					}
 				}
-				delete(sh.routes, route_key)
+				if found == false {
+					log.Printf("[shuttle] Removing route: %s-%s -> %s\n", destination.route.App, destination.route.Space, destination.drain.Url())
+					err := drains.Undial(destination.drain.Id(), destination.drain.Url())
+					if len(destinations) == 1 {
+						sh.routes[route_key] = make([]Destination, 0)
+					} else {
+						sh.routes[route_key] = append(destinations[:ndx], destinations[ndx+1:]...)
+					}
+					if err != nil {
+						log.Printf("[shuttle] Unable to remove stale drains for %s and %s\n", destination.drain.Id(), destination.drain.Url())
+					}
+				}
 			}
 		}
 	}
