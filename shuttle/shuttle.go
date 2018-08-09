@@ -20,7 +20,8 @@ type Shuttle struct {
 	received      int
 	failed_decode int
 	test_mode     bool
-	routes        map[string][]*drains.Drain
+	routes        map[string][]drains.Drain
+	route_keys 	  []string
 	routes_mutex  *sync.Mutex
 	kafka_group   string
 	kafka_addrs   string
@@ -89,7 +90,8 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 	sh.client = client
 	sh.routes_mutex = &sync.Mutex{}
 	sh.routes_mutex.Lock()
-	sh.routes = make(map[string][]*drains.Drain)
+	sh.routes = make(map[string][]drains.Drain)
+	sh.route_keys = make([]string, 0)
 	sh.routes_mutex.Unlock()
 	sh.RefreshRoutes()
 	sh.consumer.Init(kafkaAddrs, kafkaGroup)
@@ -137,7 +139,7 @@ func (sh *Shuttle) SendMessage(message events.LogSpec) {
 			Time:     message.Time,
 			Message:  KubernetesToHumanReadable(message.Log),
 		}
-		d.Packets <- p
+		d.Packets() <- p
 		sh.sent++
 	}
 }
@@ -157,13 +159,14 @@ func (sh *Shuttle) RefreshRoutes() {
 		return
 	}
 
+	// Add new routes not found.
 	wg := new(sync.WaitGroup)
 	for _, rt := range routesPkg {
 		var found = false
 		sh.routes_mutex.Lock()
 		if sh.routes[rt.App+rt.Space] != nil {
 			for _, extr := range sh.routes[rt.App+rt.Space] {
-				if extr.Url == rt.DestinationUrl {
+				if extr.Url() == rt.DestinationUrl {
 					found = true
 				}
 			}
@@ -176,20 +179,22 @@ func (sh *Shuttle) RefreshRoutes() {
 					var duplicate = false
 					sh.routes_mutex.Lock()
 					for _, sr := range sh.routes[rts.App+rts.Space] {
-						if sr.Url == rts.DestinationUrl {
+						if sr.Url() == rts.DestinationUrl {
 							duplicate = true
 						}
 					}
 					sh.routes_mutex.Unlock()
 					if duplicate == false {
-						d, err := drains.Dial(rts.DestinationUrl)
+						d, err := drains.Dial(rts.Id, rts.DestinationUrl)
 						if err == nil {
 							sh.routes_mutex.Lock()
 							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], d)
+							sh.route_keys = append(sh.route_keys, rts.App+rts.Space)
 							sh.routes_mutex.Unlock()
 							log.Printf("[shuttle] Adding route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
+						} else if err.Error() != "Host is part of a bad host list." {
+							log.Printf("[shuttle] Cannot add route: %s-%s -> %s, (%s) will retry in 5 minutes\n", rts.App, rts.Space, rts.DestinationUrl, err.Error())
 						}
-						// TODO: Report errors on failed routes.
 					} else {
 						log.Printf("[shuttle] Not adding duplicate route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
 					}
@@ -197,7 +202,31 @@ func (sh *Shuttle) RefreshRoutes() {
 			}(rt)
 		}
 	}
-	// TODO: do the reverse, see if any routes have been removed and close
-	// their dials.
 	wg.Wait()
+
+	// Remove routes no longer in storage
+	sh.routes_mutex.Lock()
+	for ndx, route_key := range sh.route_keys {
+		var found = false
+		for _, rt := range routesPkg {
+			if rt.App + rt.Space == route_key {
+				found = true
+			}
+		}
+		if found == false {
+			sh.route_keys = append(sh.route_keys[:ndx], sh.route_keys[ndx+1:]...)
+			if active_routes, ok := sh.routes[route_key]; ok {
+				for _, active_route := range active_routes {
+					err := drains.Undial(active_route.Id(), active_route.Url())
+					if err != nil {
+						log.Printf("[shuttle] Unable to remove stale drains for %s and %s\n", active_route.Id(), active_route.Url())
+					}
+				}
+				delete(sh.routes, route_key)
+			}
+		}
+	}
+	sh.routes_mutex.Unlock()
+
+		
 }

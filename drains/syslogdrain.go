@@ -11,12 +11,13 @@ import (
 	"../syslog"
 )
 
-type Pool struct {
+type SyslogDrain struct {
+	id string
 	MaxConnections uint32
 	initialConnections int
 	bufferSize int
 	destinationUrl string
-	Packets chan syslog.Packet
+	packets chan syslog.Packet
 	stopChan chan struct{}
 	conns []*syslog.Logger
 	Attempting uint32
@@ -25,7 +26,19 @@ type Pool struct {
 	Pressure float64
 }
 
-func (p *Pool) connect(increasePool bool, pressure float64) error {
+func (l *SyslogDrain) Url() (string) {
+	return l.destinationUrl
+}
+
+func (l *SyslogDrain) Id() string {
+	return l.id
+}
+
+func (l *SyslogDrain) Packets() (chan syslog.Packet) {
+	return l.packets
+}
+
+func (p *SyslogDrain) connect(increasePool bool, pressure float64) error {
 	if atomic.LoadUint32(&p.Attempting) == 1 {
 		return nil
 	}
@@ -41,37 +54,37 @@ func (p *Pool) connect(increasePool bool, pressure float64) error {
 		network = "tls"
 	} else {
 		atomic.StoreUint32(&p.Attempting, 0)
-		return fmt.Errorf("[pool] Warning unknown url schema provided: %s", Url)
+		return fmt.Errorf("Warning unknown url schema provided: %s", Url)
 	}
 
 	if strings.Contains(Url, "://") {
 		host = strings.Split(Url, "://")[1]
 	}
 
-	log.Printf("[pool] Opening connection to %s\n", host)
+	log.Printf("[drains] Opening connection to %s\n", host)
 	dest, err := syslog.Dial("logshuttle.akkeris.local", network, host, nil, time.Second*4, time.Second*4, MaxLogSize)
 	if err != nil {
 		atomic.StoreUint32(&p.Attempting, 0)
-		return fmt.Errorf("[pool] Unable to establish connection to %s:", err)
+		return fmt.Errorf("Unable to establish connection to %s:", err)
 	}
 	if dest == nil {
 		atomic.StoreUint32(&p.Attempting, 0)
-		return fmt.Errorf("[pool] Unable to establish connection, no known error %s", host)
+		return fmt.Errorf("Unable to establish connection, no known error %s", host)
 	}
 	p.conns = append(p.conns, dest)
 
 	if increasePool {
-		log.Printf("[pool] Increasing pool size for %s to %d because back pressure was %f%%\n", p.destinationUrl, p.OpenConnections(), pressure * 100)
+		log.Printf("[drains] Increasing pool size for %s to %d because back pressure was %f%%\n", p.destinationUrl, p.OpenConnections(), pressure * 100)
 	}
 	atomic.StoreUint32(&p.Attempting, 0)
 	return nil
 }
 
-func (p *Pool) OpenConnections() uint32 {
+func (p *SyslogDrain) OpenConnections() uint32 {
 	return uint32(len(p.conns))
 }
 
-func (p *Pool) PrintMetrics() {
+func (p *SyslogDrain) PrintMetrics() {
 	p.Mutex.Lock()
 	log.Printf("[metrics] syslog=%s max#connections=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", p.destinationUrl, p.MaxConnections, p.OpenConnections(), p.Pressure * 100, p.Sent)
 	if p.Pressure > 0.98 && p.OpenConnections() == p.MaxConnections {
@@ -81,12 +94,17 @@ func (p *Pool) PrintMetrics() {
 	p.Mutex.Unlock()
 }
 
-func (p *Pool) Init(DestinationUrl string) error {
+func (p *SyslogDrain) Flush() {
+	// do nothing
+}
+
+func (p *SyslogDrain) Init(Id string, DestinationUrl string) error {
+	p.id = Id
 	p.MaxConnections = 40
 	p.initialConnections = 1
 	p.bufferSize = 512
 	p.destinationUrl = DestinationUrl
-	p.Packets = make(chan syslog.Packet, p.bufferSize)
+	p.packets = make(chan syslog.Packet, p.bufferSize)
 	p.stopChan = make(chan struct{})
 	p.conns = make([]*syslog.Logger, 0)
 	atomic.StoreUint32(&p.Attempting, 0)
@@ -94,36 +112,36 @@ func (p *Pool) Init(DestinationUrl string) error {
 	p.Mutex = &sync.Mutex{}
 	p.Pressure = 0
 
-	log.Printf("[pool] Creating pool to %s\n", p.destinationUrl)
+	log.Printf("[drains] Creating syslog drain to %s\n", p.destinationUrl)
 	for i := 0; i < p.initialConnections; i++ {
 		if i > 0 {
 			// throttle connections so we don't upset our upstream neighbors.
 			time.Sleep(time.Millisecond * 500)
 		}
 		if err := p.connect(false, 0); err != nil {
-			log.Printf("[pool] Connection was closed to %s due to %s\n", p.destinationUrl, err)
+			log.Printf("[drains] Connection was closed to %s due to %s\n", p.destinationUrl, err)
 		}
 	}
 	if(p.OpenConnections() == 0) {
-		return fmt.Errorf("[pool] Unable to establish connection to %s", p.destinationUrl)
+		return fmt.Errorf("Unable to establish connection to %s", p.destinationUrl)
 	}
 	go p.writeLoop()
 
-	log.Printf("[pool] Pool successfully created for %s\n", p.destinationUrl)
+	log.Printf("[drains] Pool successfully created for %s\n", p.destinationUrl)
 	return nil
 }
 
-func (p *Pool) Close() {
+func (p *SyslogDrain) Close() {
+	p.stopChan <- struct{}{}
 	for i := 0; i < int(p.OpenConnections()); i++ {
 		p.conns[i].Close()
 	}
-	p.stopChan <- struct{}{}
 }
 
-func (p *Pool) writeLoop() {
+func (p *SyslogDrain) writeLoop() {
 	for {
 		select {
-			case packet := <- p.Packets:
+			case packet := <- p.packets:
 				p.Mutex.Lock()
 				p.Sent++
 				// Ensure the same host goes down the same connection so we keep logs in 
@@ -132,7 +150,7 @@ func (p *Pool) writeLoop() {
 				// so its deterministic in the connection it picks.
 				ndx := uint32(crc32.ChecksumIEEE([]byte(packet.Tag)) % p.OpenConnections())
 				p.conns[ndx].Packets <- packet
-				p.Pressure = (p.Pressure + (float64(len(p.Packets)) / float64(cap(p.Packets)))) / float64(2)
+				p.Pressure = (p.Pressure + (float64(len(p.packets)) / float64(cap(p.packets)))) / float64(2)
 				if(p.Pressure > 0.1 && p.OpenConnections() < p.MaxConnections) {
 					go p.connect(true, p.Pressure)
 				}
