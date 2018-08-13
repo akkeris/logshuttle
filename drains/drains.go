@@ -119,7 +119,7 @@ func Undial(Id string, Url string) (error) {
 
 func CloseAll() {
 	for _, drain := range drain_keys {
-		fmt.Printf("[drains] Closing drain to %s...", drain)
+		fmt.Printf("[drains]  Closing drain to %s...", drain)
 		drains[drain].Close()
 		fmt.Printf("\n")
 	}
