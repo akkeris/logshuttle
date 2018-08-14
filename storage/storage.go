@@ -126,8 +126,8 @@ func (rs *PostgresStorage) Close() {
 }
 
 func (rs *PostgresStorage) SetSession(key string, value LogSession, duration time.Duration) error {
-	_, err := rs.client.Exec("insert into sessions(session, site, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6)",
-		key, value.App, value.Site, value.Space, value.Lines, value.Tail, time.Now().Add(duration))
+	_, err := rs.client.Exec("insert into sessions(session, site, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6, $7)",
+		key,  value.Site, value.App, value.Space, value.Lines, value.Tail, time.Now().Add(duration))
 	return err
 }
 
@@ -170,7 +170,7 @@ func (rs *PostgresStorage) RemoveRoute(route Route) error {
 }
 
 func (rs *PostgresStorage) AddRoute(route Route) error {
-	_, err := rs.client.Exec("insert into drains (drain, site, app, space, created, updated, destination) values ($1, $2, $3, $4, $5, $6) on conflict do nothing", route.Id, route.Site, route.App, route.Space, route.Created, route.Updated, route.DestinationUrl)
+	_, err := rs.client.Exec("insert into drains (drain, site, app, space, created, updated, destination) values ($1, $2, $3, $4, $5, $6, $7) on conflict do nothing", route.Id, route.Site, route.App, route.Space, route.Created, route.Updated, route.DestinationUrl)
 	return err
 }
 

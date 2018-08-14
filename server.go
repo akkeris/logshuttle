@@ -259,7 +259,7 @@ func ReadLogSession(client *storage.Storage, kafkaAddrs []string) func(http.Resp
 		}
 		res.WriteHeader(200)
 		var ls shuttle.Session
-		ls.ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, res)
+		ls.ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, logSess.Site, res)
 	}
 }
 
