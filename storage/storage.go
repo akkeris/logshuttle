@@ -11,16 +11,18 @@ import (
 
 type Route struct {
 	Id             string    `json:"id"`
-	Space          string    `json:"space"`
-	App            string    `json:"app"`
+	Space          string    `json:"space,omitempty"`
+	App            string    `json:"app,omitempty"`
+	Site           string    `json:"site,omitempty"`
 	Created        time.Time `json:"created"`
 	Updated        time.Time `json:"updated"`
 	DestinationUrl string    `json:"url"`
 }
 
 type LogSession struct {
-	App   string `json:"app"`
-	Space string `json:"space"`
+	App   string `json:"app,omitempty"`
+	Space string `json:"space,omitempty"`
+	Site string `json:"site,omitempty"`
 	Lines int    `json:lines`
 	Tail  bool   `json:tail`
 }
@@ -54,6 +56,22 @@ func UnmarshalRoute(route string) (Route, error) {
 	return r, nil
 }
 
+func (rt *Route) GetRouteKey() string {
+	if rt.Site != "" {
+		return rt.Site
+	} else {
+		return rt.App + rt.Space
+	}
+}
+
+func (rt *Route) GetRouteString() string {
+	if rt.Site != "" {
+		return rt.Site + " -> " + rt.DestinationUrl
+	} else {
+		return rt.Space + "-" + rt.App + " -> " + rt.DestinationUrl
+	}
+}
+
 // Postgres Interface
 
 type PostgresStorage struct {
@@ -79,11 +97,11 @@ func (rs *PostgresStorage) Init(url string) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("create table if not exists drains (drain varchar(128) not null primary key, app text not null, space text not null, created timestamptz, updated timestamptz, destination text not null)")
+	_, err = db.Exec("create table if not exists drains (drain varchar(128) not null primary key, site text not null default '', app text not null default '', space text not null default '', created timestamptz, updated timestamptz, destination text not null)")
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("create table if not exists sessions (session varchar(128) not null primary key, app text not null, space text not null, lines int, tail boolean, expiration timestamptz default now())")
+	_, err = db.Exec("create table if not exists sessions (session varchar(128) not null primary key, site text not null default '', app text not null default '', space text not null default '', lines int, tail boolean, expiration timestamptz default now())")
 	if err != nil {
 		return err
 	}
@@ -108,18 +126,18 @@ func (rs *PostgresStorage) Close() {
 }
 
 func (rs *PostgresStorage) SetSession(key string, value LogSession, duration time.Duration) error {
-	_, err := rs.client.Exec("insert into sessions(session, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6)",
-		key, value.App, value.Space, value.Lines, value.Tail, time.Now().Add(duration))
+	_, err := rs.client.Exec("insert into sessions(session, site, app, space, lines, tail, expiration) values ($1, $2, $3, $4, $5, $6)",
+		key, value.App, value.Site, value.Space, value.Lines, value.Tail, time.Now().Add(duration))
 	return err
 }
 
 func (rs *PostgresStorage) GetSession(key string) (value LogSession, err error) {
-	err = rs.client.QueryRow("select session, app, space, lines, tail from sessions where session=$1 and expiration >= now()", key).Scan(&key, &value.App, &value.Space, &value.Lines, &value.Tail)
+	err = rs.client.QueryRow("select session, site, app, space, lines, tail from sessions where session=$1 and expiration >= now()", key).Scan(&key, &value.Site, &value.App, &value.Space, &value.Lines, &value.Tail)
 	return value, err
 }
 
 func (rs *PostgresStorage) GetRoutes() ([]Route, error) {
-	rows, err := rs.client.Query("select drain, app, space, created, updated, destination from drains")
+	rows, err := rs.client.Query("select drain, site, app, space, created, updated, destination from drains")
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +145,7 @@ func (rs *PostgresStorage) GetRoutes() ([]Route, error) {
 	var routes []Route = make([]Route, 0)
 	for rows.Next() {
 		var route Route
-		err = rows.Scan(&route.Id, &route.App, &route.Space, &route.Created, &route.Updated, &route.DestinationUrl)
+		err = rows.Scan(&route.Id, &route.Site, &route.App, &route.Space, &route.Created, &route.Updated, &route.DestinationUrl)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +160,7 @@ func (rs *PostgresStorage) GetRoutes() ([]Route, error) {
 
 func (rs *PostgresStorage) GetRouteById(Id string) (*Route, error) {
 	var route Route
-	err := rs.client.QueryRow("select drain, app, space, created, updated, destination from drains where drain=$1", Id).Scan(&route.Id, &route.App, &route.Space, &route.Created, &route.Updated, &route.DestinationUrl)
+	err := rs.client.QueryRow("select drain, site, app, space, created, updated, destination from drains where drain=$1", Id).Scan(&route.Id, &route.Site, &route.App, &route.Space, &route.Created, &route.Updated, &route.DestinationUrl)
 	return &route, err
 }
 
@@ -152,7 +170,7 @@ func (rs *PostgresStorage) RemoveRoute(route Route) error {
 }
 
 func (rs *PostgresStorage) AddRoute(route Route) error {
-	_, err := rs.client.Exec("insert into drains (drain, app, space, created, updated, destination) values ($1, $2, $3, $4, $5, $6) on conflict do nothing", route.Id, route.App, route.Space, route.Created, route.Updated, route.DestinationUrl)
+	_, err := rs.client.Exec("insert into drains (drain, site, app, space, created, updated, destination) values ($1, $2, $3, $4, $5, $6) on conflict do nothing", route.Id, route.Site, route.App, route.Space, route.Created, route.Updated, route.DestinationUrl)
 	return err
 }
 
