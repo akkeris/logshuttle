@@ -140,20 +140,21 @@ func TestShuttle(t *testing.T) {
 	(*mem).AddRoute(web_route)
 	shuttle.Refresh()
 
-	// Create some fake messages to listen to.
-	CreateHttpMessage(shuttle, "", "", "app", "space", "/some_path", "post", "1.1.1.1", "")
-	CreateAppMessage(shuttle, "app", "space", "Oh hello.", "stdout")
-	CreateAppMessage(shuttle, "app", "space2", "Oh hello3", "stdout")
-	CreateAppMessage(shuttle, "app", "space3", "Oh hello31", "stdout")
-	CreateAppMessage(shuttle, "app2", "space", "Oh hello4", "stdout")
-	CreateAppMessage(shuttle, "app", "space", "Oh hello2.", "stdout")
-	CreateAppMessage(shuttle, "app", "space2", "Oh hello5", "stdout")
-	CreateAppMessage(shuttle, "app", "space3", "Oh hello6", "stdout")
-
 	Convey("Ensure we can post and receive a log message via udp syslog (and in order)", t, func() {
+		CreateHttpMessage(shuttle, "", "", "app", "space", "/some_path", "post", "1.1.1.1", "")
 		logMsg := <-udp
 		So(logMsg["message"], ShouldEqual, "fwd=\"1.1.1.1\" host=app-space path=/some_path")
-		logMsg = <-udp
+	})
+
+	Convey("Ensure we can post and receive a log message via udp syslog (and in order)", t, func() {
+		CreateAppMessage(shuttle, "app", "space", "Oh hello.", "stdout")
+		CreateAppMessage(shuttle, "app", "space2", "Oh hello3", "stdout")
+		CreateAppMessage(shuttle, "app", "space3", "Oh hello31", "stdout")
+		CreateAppMessage(shuttle, "app2", "space", "Oh hello4", "stdout")
+		CreateAppMessage(shuttle, "app", "space", "Oh hello2.", "stdout")
+		CreateAppMessage(shuttle, "app", "space2", "Oh hello5", "stdout")
+		CreateAppMessage(shuttle, "app", "space3", "Oh hello6", "stdout")
+		logMsg := <-udp
 		So(logMsg["message"], ShouldEqual, "Oh hello.")
 		So(logMsg["hostname"], ShouldEqual, "app-space")
 		logMsg = <-udp
