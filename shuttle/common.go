@@ -117,6 +117,9 @@ func ParseWebLogMessage(data []byte, msg *events.LogSpec) bool {
 	var app = ""
 	var space = ""
 	var reformattedMessage = ""
+	var site = ""
+	var site_path = ""
+	var path = ""
 	var message = string(data)
 
 	for _, block := range strings.Fields(message) {
@@ -134,26 +137,34 @@ func ParseWebLogMessage(data []byte, msg *events.LogSpec) bool {
 				} else {
 					space = splitAppName[1]
 				}
-				reformattedMessage = reformattedMessage + "host=" + value[1] + " "
 			} else if value[0] == "source" {
-				unescaped, err := url.QueryUnescape(value[1])
+				unescaped, err := url.QueryUnescape(strings.TrimSpace(value[1]))
 				if err != nil {
 					reformattedMessage = reformattedMessage + "fwd=\"" + value[1] + "\" "
 				} else {
 					reformattedMessage = reformattedMessage + "fwd=\"" + unescaped + "\" "
 				}
+			} else if value[0] == "path" {
+				path = value[1]
+			} else if value[0] == "site_domain" {
+				site = value[1]
+			} else if value[0] == "site_path" {
+				site_path = value[1]
 			} else if value[0] != "timestamp" {
 				reformattedMessage = reformattedMessage + value[0] + "=" + value[1] + " "
-			}
+			} 
 		}
 	}
 	if app == "" || space == "" {
 		return true
 	}
-	msg.Log = reformattedMessage
+	msg.Log = strings.TrimSpace(reformattedMessage)
 	msg.Stream = ""
 	msg.Time = time.Now()
 	msg.Space = space
+	msg.Site = site
+	msg.SitePath = site_path
+	msg.Path = path
 	msg.Kubernetes.NamespaceName = space
 	msg.Kubernetes.PodId = ""
 	msg.Kubernetes.PodName = "akkeris/router"
