@@ -87,6 +87,9 @@ func dial(network, raddr string, rootCAs *x509.CertPool, connectTimeout time.Dur
 // A Logger is a connection to a syslog server. It reconnects on error.
 // Clients log by sending a Packet to the logger.Packets channel.
 type Logger struct {
+	ErrorsCount		int64
+	SentCount		int64
+	AvgWriteTime    time.Duration
 	conn           *conn
 	Packets        chan Packet
 	Errors         chan error
@@ -115,6 +118,9 @@ func Dial(clientHostname, network, raddr string, rootCAs *x509.CertPool, connect
 	}
 
 	logger := &Logger{
+		ErrorsCount:      0,
+		SentCount:        0,
+		AvgWriteTime:     0,
 		ClientHostname:   clientHostname,
 		network:          network,
 		raddr:            raddr,
@@ -198,15 +204,18 @@ func (l *Logger) writePacket(p Packet) {
 		case *net.TCPConn, *tls.Conn:
 			l.conn.netConn.SetWriteDeadline(deadline)
 			_, err = io.WriteString(l.conn.netConn, p.Generate(l.tcpMaxLineLength)+"\n")
+			l.SentCount++
 		case *net.UDPConn:
 			l.conn.netConn.SetWriteDeadline(deadline)
 			_, err = io.WriteString(l.conn.netConn, p.Generate(1024))
+			l.SentCount++
 		default:
 			panic(fmt.Errorf("Network protocol %s not supported", l.network))
 		}
 		if err == nil {
 			return
 		} else {
+			l.ErrorsCount++
 			// We had an error -- we need to close the connection and try again
 			l.conn.netConn.Close()
 			l.handleError(err)
@@ -220,7 +229,9 @@ func (l *Logger) writeLoop() {
 	for {
 		select {
 		case p := <-l.Packets:
+			start := time.Now()
 			l.writePacket(p)
+			l.AvgWriteTime = time.Duration(((int64(l.AvgWriteTime) * l.SentCount) + int64(time.Since(start)))/(l.SentCount + 1))
 		case <-l.stopChan:
 			return
 		}

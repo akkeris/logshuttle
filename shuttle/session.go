@@ -3,11 +3,11 @@ package shuttle
 import (
 	"../events"
 	"encoding/json"
-	"fmt"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"net/http"
 	"strings"
 	"time"
+	"log"
 )
 
 type Session struct {
@@ -16,9 +16,9 @@ type Session struct {
 	response http.ResponseWriter
 	app      string
 	space    string
+	site     string
 	group    string
 }
-
 
 func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 	var msg events.LogSpec
@@ -38,12 +38,20 @@ func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 
 func (ls *Session) RespondWithWebLog(e *kafka.Message) error {
 	var msg events.LogSpec
-	if ParseWebLogMessage(e.Value, &msg) == false && IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space {
+	if ParseWebLogMessage(e.Value, &msg) == false && ((IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space) || (msg.Site != "" && msg.Site == ls.site)) {
 		ls.loops = 0
-		log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/router: " + msg.Log + "\n"
-		err := WriteAndFlush(log, ls.response)
-		if err != nil {
-			return err
+		if msg.Site == "" {
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/router: " + msg.Log + " host=" + msg.Kubernetes.ContainerName + " path=" + msg.Path + "\n"
+			err := WriteAndFlush(log, ls.response)
+			if err != nil {
+				return err
+			}
+		} else {
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + msg.Site + " akkeris/router: " + msg.Log + " host=" + msg.Site + " path=" + msg.SitePath + "\n"
+			err := WriteAndFlush(log, ls.response)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -62,24 +70,36 @@ func (ls *Session) RespondWithBuildLog(e *kafka.Message) error {
 	return nil
 }
 
-func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space string, res http.ResponseWriter) {
-	fmt.Println("[info] listening for logs on " + app + "-" + space)
+func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space string, site string, res http.ResponseWriter) {
+	if site != "" {
+		log.Println("[info] listening for logs on site " + site)
+	} else {
+		log.Println("[info] listening for logs on " + app + "-" + space)
+	}
 
 	ls.group = RandomString(16)
 	ls.response = res
 	ls.space = space
 	ls.app = app
+	ls.site = site
 	ls.loops = 0
 	ls.IsOpen = true
 
 	consumer := events.CreateConsumerCluster(kafkaAddrs, ls.group)
-	consumer.SubscribeTopics([]string{ls.space, "alamoweblogs", "alamobuildlogs"}, nil)
+	if ls.site == "" && ls.space != "" {
+		consumer.SubscribeTopics([]string{ls.space, "alamoweblogs", "alamobuildlogs"}, nil)
+	} else if ls.site != "" {
+		consumer.SubscribeTopics([]string{"alamoweblogs"}, nil)
+	} else {
+		consumer.Close()
+		return
+	}
 	defer consumer.Close()
 
 	for ls.IsOpen == true {
 		ev := consumer.Poll(100)
-		if ls.loops > 10*60 {
-			// we've timed out.
+		if ls.loops > 10 * 60 * 5 {
+			// we've timed out, 5 minutes.
 			ls.IsOpen = false
 			continue
 		}
@@ -89,7 +109,7 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 		}
 		switch e := ev.(type) {
 		case *kafka.Message:
-			if *e.TopicPartition.Topic == ls.space {
+			if ls.space != "" && *e.TopicPartition.Topic == ls.space {
 				if err := ls.RespondWithAppLog(e); err != nil {
 					ls.IsOpen = false
 					break
@@ -99,19 +119,23 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 					ls.IsOpen = false
 					break
 				}
-			} else if *e.TopicPartition.Topic == "alamobuildlogs" {
+			} else if ls.space != "" && *e.TopicPartition.Topic == "alamobuildlogs" {
 				if err := ls.RespondWithBuildLog(e); err != nil {
 					ls.IsOpen = false
 					break
 				}
 			}
 		case kafka.Error:
-			fmt.Printf("%% Error: %v\n", e)
+			log.Printf("%% Error: %v\n", e)
 			ls.IsOpen = false
 			return
 		default:
 			ls.loops = ls.loops + 1
 		}
 	}
-	fmt.Println("[info] closing listener on " + ls.app + "-" + ls.space)
+	if site != "" {
+		log.Println("[info] closing listener on site " + site)
+	} else {
+		log.Println("[info] closing listener on " + ls.app + "-" + ls.space)
+	}
 }

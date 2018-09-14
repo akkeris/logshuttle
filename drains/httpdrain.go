@@ -30,7 +30,7 @@ type HttpDrain struct {
 }
 
 func (l *HttpDrain) Init(Id string, Url string) (error) {
-	log.Printf("[drains] Creating URL drain to %s\n", Url)
+	log.Printf("[drains]  Creating URL drain to %s\n", Url)
 	l.id = Id
 	l.url = Url
 	u, err := url.Parse(Url)

@@ -70,7 +70,16 @@ func (sh *Shuttle) forwardWebLogs() {
 		if err := ParseWebLogMessage(e.Value, &msg); err == true {
 			sh.failed_decode++
 		} else {
+			var orgLog = msg.Log
+			msg.Log = msg.Log + " host=" + msg.Kubernetes.ContainerName + "-" + msg.Topic + " path=" + msg.Path
 			sh.SendMessage(msg)
+			if msg.Site != "" {
+				msg.Log = orgLog + " host=" + msg.Site + " path=" + msg.SitePath
+				msg.Kubernetes.PodName = "akkeris/router"
+				msg.Kubernetes.ContainerName = msg.Site
+				msg.Topic = ""
+				sh.SendMessage(msg)
+			}
 		}
 	}
 }
@@ -130,6 +139,9 @@ func (sh *Shuttle) SendMessage(message events.LogSpec) {
 			tag = message.Kubernetes.PodName
 		}
 		var host = proc.App + "-" + message.Topic
+		if message.Topic == "" {
+			host = proc.App
+		}
 		if sh.test_mode {
 			host = "logshuttle-test"
 		}
@@ -169,9 +181,10 @@ func (sh *Shuttle) RefreshRoutes() {
 	wg := new(sync.WaitGroup)
 	for _, rt := range routesPkg {
 		var found = false
+		var route_key = rt.GetRouteKey()
 		sh.routes_mutex.Lock()
-		if sh.routes[rt.App+rt.Space] != nil {
-			for _, extr := range sh.routes[rt.App+rt.Space] {
+		if sh.routes[route_key] != nil {
+			for _, extr := range sh.routes[route_key] {
 				if extr.route.Id == rt.Id {
 					found = true
 				}
@@ -183,8 +196,9 @@ func (sh *Shuttle) RefreshRoutes() {
 			wg.Add(1)
 			go func(rts storage.Route) {
 					var duplicate = false
+					var rts_route_key = rts.GetRouteKey()
 					sh.routes_mutex.Lock()
-					for _, sr := range sh.routes[rts.App+rts.Space] {
+					for _, sr := range sh.routes[rts_route_key] {
 						if sr.drain.Url() == rts.DestinationUrl {
 							duplicate = true
 						}
@@ -194,23 +208,23 @@ func (sh *Shuttle) RefreshRoutes() {
 						d, err := drains.Dial(rts.Id, rts.DestinationUrl)
 						if err == nil {
 							sh.routes_mutex.Lock()
-							sh.routes[rts.App+rts.Space] = append(sh.routes[rts.App+rts.Space], Destination{drain:d, route:rts})
+							sh.routes[rts_route_key] = append(sh.routes[rts_route_key], Destination{drain:d, route:rts})
 							var found_key = false
 							for _, v := range sh.route_keys {
-								if v == rts.App + rts.Space {
+								if v == rts.GetRouteKey() {
 									found_key = true
 								}
 							}
 							if found_key == false {
-								sh.route_keys = append(sh.route_keys, rts.App+rts.Space)
+								sh.route_keys = append(sh.route_keys, rts_route_key)
 							}
 							sh.routes_mutex.Unlock()
-							log.Printf("[shuttle] Adding route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
+							log.Printf("[shuttle] Adding route: %s with key\n", rts.GetRouteString())
 						} else if err.Error() != "Host is part of a bad host list." {
-							log.Printf("[shuttle] Cannot add route: %s-%s -> %s, (%s) will retry in 5 minutes\n", rts.App, rts.Space, rts.DestinationUrl, err.Error())
+							log.Printf("[shuttle] Cannot add route: %s, (%s) will retry in 5 minutes\n", rts.GetRouteString(), err.Error())
 						}
 					} else {
-						log.Printf("[shuttle] Not adding duplicate route: %s-%s -> %s\n", rts.App, rts.Space, rts.DestinationUrl)
+						log.Printf("[shuttle] Not adding duplicate route: %s\n", rts.GetRouteString())
 					}
 				wg.Done()
 			}(rt)
@@ -230,7 +244,7 @@ func (sh *Shuttle) RefreshRoutes() {
 					}
 				}
 				if found == false {
-					log.Printf("[shuttle] Removing route: %s-%s -> %s\n", destination.route.App, destination.route.Space, destination.drain.Url())
+					log.Printf("[shuttle] Removing route: %s\n", destination.route.GetRouteString())
 					err := drains.Undial(destination.drain.Id(), destination.drain.Url())
 					if len(destinations) == 1 {
 						sh.routes[route_key] = make([]Destination, 0)

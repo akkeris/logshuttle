@@ -78,17 +78,9 @@ func HealthCheck(client *storage.Storage) func(http.ResponseWriter, *http.Reques
 	}
 }
 
-func ListLogDrains(client *storage.Storage) func(martini.Params, render.Render) {
+func ListLogDrains(client *storage.Storage, isSite bool) func(martini.Params, render.Render) {
 	return func(params martini.Params, rr render.Render) {
-		if params["app_key"] == "" {
-			ReportInvalidRequest(rr)
-			return
-		}
-
-		var app_keys = strings.SplitN(params["app_key"], "-", 2)
-		var app = app_keys[0]
-		var space = app_keys[1]
-		if app == "" || space == "" {
+		if params["key"] == "" {
 			ReportInvalidRequest(rr)
 			return
 		}
@@ -100,10 +92,26 @@ func ListLogDrains(client *storage.Storage) func(martini.Params, render.Render) 
 		}
 
 		var resp = make([]logDrainResponse, 0)
-		for _, r := range routes_pkg {
-			if r.App == app && r.Space == space {
-				var n = logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: r.Created, UpdatedAt: r.Updated, Id: r.Id, Token: app + "-" + space, Url: r.DestinationUrl}
-				resp = append(resp, n)
+		if !isSite {
+			var app_keys = strings.SplitN(params["key"], "-", 2)
+			var app = app_keys[0]
+			var space = app_keys[1]
+			if app == "" || space == "" {
+				ReportInvalidRequest(rr)
+				return
+			}
+			for _, r := range routes_pkg {
+				if r.App == app && r.Space == space {
+					var n = logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: r.Created, UpdatedAt: r.Updated, Id: r.Id, Token: app + "-" + space, Url: r.DestinationUrl}
+					resp = append(resp, n)
+				}
+			}
+		} else {
+			for _, r := range routes_pkg {
+				if params["key"] == r.Site {
+					var n = logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: r.Created, UpdatedAt: r.Updated, Id: r.Id, Token: r.Site, Url: r.DestinationUrl}
+					resp = append(resp, n)
+				}
 			}
 		}
 		rr.JSON(200, resp)
@@ -125,20 +133,13 @@ func CreateLogEvent(kafkaProducer events.LogProducer) func(martini.Params, event
 	}
 }
 
-func CreateLogDrain(client *storage.Storage) func(martini.Params, logDrainCreateRequest, binding.Errors, render.Render) {
+func CreateLogDrain(client *storage.Storage, isSite bool) func(martini.Params, logDrainCreateRequest, binding.Errors, render.Render) {
 	return func(params martini.Params, opts logDrainCreateRequest, berr binding.Errors, r render.Render) {
 		if berr != nil {
 			ReportInvalidRequest(r)
 			return
 		}
-		if params["app_key"] == "" {
-			ReportInvalidRequest(r)
-			return
-		}
-		var app_keys = strings.SplitN(params["app_key"], "-", 2)
-		var app = app_keys[0]
-		var space = app_keys[1]
-		if app == "" || space == "" {
+		if params["key"] == "" {
 			ReportInvalidRequest(r)
 			return
 		}
@@ -147,25 +148,29 @@ func CreateLogDrain(client *storage.Storage) func(martini.Params, logDrainCreate
 			ReportError(r, err)
 			return
 		}
-		err = (*client).AddRoute(storage.Route{Id: id.String(), Space: space, App: app, DestinationUrl: opts.Url, Created: time.Now(), Updated: time.Now()})
+		if isSite {
+			err = (*client).AddRoute(storage.Route{Id: id.String(), Site: params["key"], Space: "", App: "", DestinationUrl: opts.Url, Created: time.Now(), Updated: time.Now()})
+		} else {
+			var app_keys = strings.SplitN(params["key"], "-", 2)
+			var app = app_keys[0]
+			var space = app_keys[1]
+			if (app == "" || space == "") {
+				ReportInvalidRequest(r)
+				return
+			}
+			err = (*client).AddRoute(storage.Route{Id: id.String(), Space: space, App: app, DestinationUrl: opts.Url, Created: time.Now(), Updated: time.Now()})
+		}
 		if err != nil {
 			ReportError(r, err)
 			return
 		}
-		r.JSON(201, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: id.String(), Token: app + "-" + space, Url: opts.Url})
+		r.JSON(201, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: time.Now(), UpdatedAt: time.Now(), Id: id.String(), Token: params["key"], Url: opts.Url})
 	}
 }
 
-func DeleteLogDrain(client *storage.Storage) func(martini.Params, render.Render) {
+func DeleteLogDrain(client *storage.Storage, isSite bool) func(martini.Params, render.Render) {
 	return func(params martini.Params, r render.Render) {
-		if params["app_key"] == "" {
-			ReportInvalidRequest(r)
-			return
-		}
-		var app_keys = strings.SplitN(params["app_key"], "-", 2)
-		var app = app_keys[0]
-		var space = app_keys[1]
-		if app == "" || space == "" || params["id"] == "" {
+		if params["key"] == "" {
 			ReportInvalidRequest(r)
 			return
 		}
@@ -176,29 +181,27 @@ func DeleteLogDrain(client *storage.Storage) func(martini.Params, render.Render)
 			return
 		}
 
-		r.JSON(200, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
+		r.JSON(200, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: params["key"], Url: route.DestinationUrl})
 	}
 }
 
-func GetLogDrain(client *storage.Storage) func(martini.Params, render.Render) {
+func GetLogDrain(client *storage.Storage, isSite bool) func(martini.Params, render.Render) {
 	return func(params martini.Params, r render.Render) {
-		if params["app_key"] == "" {
+		if params["key"] == "" {
 			ReportInvalidRequest(r)
 			return
 		}
-		var app_keys = strings.SplitN(params["app_key"], "-", 2)
-		var app = app_keys[0]
-		var space = app_keys[1]
-		if app == "" || space == "" || params["id"] == "" {
-			ReportInvalidRequest(r)
-			return
-		}
+		
 		var route, err = (*client).GetRouteById(params["id"])
 		if err != nil {
 			r.JSON(404, map[string]interface{}{"message": "No such log drain or app found"})
 			return
 		}
-		r.JSON(200, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: app + "-" + space, Url: route.DestinationUrl})
+		if params["key"] != route.Site && params["key"] != (route.App + "-" + route.Space) {
+			r.JSON(404, map[string]interface{}{"message": "No such log drain or app found"})
+			return
+		}
+		r.JSON(200, logDrainResponse{Addon: addonResponse{Id: "", Name: ""}, CreatedAt: route.Created, UpdatedAt: route.Updated, Id: route.Id, Token: params["key"], Url: route.DestinationUrl})
 	}
 }
 
@@ -210,10 +213,16 @@ func StartHttpShuttleServices(client *storage.Storage, producer events.LogProduc
 		}
 	})
 	m.Use(render.Renderer())
-	m.Get("/apps/:app_key/log-drains", ListLogDrains(client))
-	m.Post("/apps/:app_key/log-drains", binding.Json(logDrainCreateRequest{}), CreateLogDrain(client))
-	m.Delete("/apps/:app_key/log-drains/:id", DeleteLogDrain(client))
-	m.Get("/apps/:app_key/log-drains/:id", GetLogDrain(client))
+	m.Get("/apps/:key/log-drains", ListLogDrains(client, false))
+	m.Post("/apps/:key/log-drains", binding.Json(logDrainCreateRequest{}), CreateLogDrain(client, false))
+	m.Delete("/apps/:key/log-drains/:id", DeleteLogDrain(client, false))
+	m.Get("/apps/:key/log-drains/:id", GetLogDrain(client, false))
+
+	m.Get("/sites/:key/log-drains", ListLogDrains(client, true))
+	m.Post("/sites/:key/log-drains", binding.Json(logDrainCreateRequest{}), CreateLogDrain(client, true))
+	m.Delete("/sites/:key/log-drains/:id", DeleteLogDrain(client, true))
+	m.Get("/sites/:key/log-drains/:id", GetLogDrain(client, true))
+
 	m.Get("/octhc", HealthCheck(client))
 	// Private end point to create new events within the log stream that are controller-api specifc.
 	m.Post("/log-events", binding.Json(events.LogSpec{}), CreateLogEvent(producer))
@@ -250,7 +259,7 @@ func ReadLogSession(client *storage.Storage, kafkaAddrs []string) func(http.Resp
 		}
 		res.WriteHeader(200)
 		var ls shuttle.Session
-		ls.ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, res)
+		ls.ConsumeAndRespond(kafkaAddrs, logSess.App, logSess.Space, logSess.Site, res)
 	}
 }
 

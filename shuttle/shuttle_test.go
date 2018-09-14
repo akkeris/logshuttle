@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"fmt"
 )
 
 func CreateMemoryStorage() (*storage.Storage) {
@@ -46,14 +47,14 @@ func CreateUDPSyslogServer() (syslog.LogPartsChannel) {
 	return channel
 }
 
-func CreateTCPSyslogServer() (syslog.LogPartsChannel) {
+func CreateTCPSyslogServer(port string) (syslog.LogPartsChannel) {
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
 
 	server := syslog.NewServer()
 	server.SetFormat(syslog.RFC5424)
 	server.SetHandler(handler)
-	server.ListenTCP("0.0.0.0:11515")
+	server.ListenTCP("0.0.0.0:" + port)
 	server.Boot()
 	go server.Wait()
 	return channel
@@ -93,7 +94,7 @@ func CreateHTTPSyslogServer() (syslog.LogPartsChannel) {
 	return channel
 }
 
-func CreateMessage(shuttle Shuttle, app string, space string, message string, stream string) {
+func CreateAppMessage(shuttle Shuttle, app string, space string, message string, stream string) {
 	var e events.LogSpec
 	e.Topic = space
 	e.Kubernetes.ContainerName = app
@@ -101,18 +102,30 @@ func CreateMessage(shuttle Shuttle, app string, space string, message string, st
 	e.Time = time.Now()
 	e.Log = message
 	e.Stream = stream
-
 	bytes, _ := json.Marshal(e)
-	
 	k := kafka.Message{TopicPartition: kafka.TopicPartition{Topic:&space, Partition: 0}, Timestamp: time.Now(), Key:[]byte(""), Value:bytes}
 	shuttle.consumer.AppLogs <- &k
+}
 
+func CreateHttpMessage(shuttle Shuttle, site string, site_path string, app string, space string, app_path string, method string, source string, extra string) {
+	logline := fmt.Sprintf("hostname=%s-%s source=%s path=%s timestamp=%s", app, space, source, app_path, time.Now().UTC().Format(time.RFC3339))
+	if site != "" {
+		logline += " site_domain=" + site + " site_path=" + site_path 
+	}
+	if extra != "" {
+		logline += " " + extra
+	}
+	var topic = "alamoweblogs"
+	k := kafka.Message{TopicPartition: kafka.TopicPartition{Topic:&topic, Partition: 0}, Timestamp: time.Now(), Key:[]byte(""), Value:[]byte(logline)}
+	shuttle.consumer.WebLogs <- &k
 }
 
 func TestShuttle(t *testing.T) {
 	mem := CreateMemoryStorage()
 	udp := CreateUDPSyslogServer()
-	tcp := CreateTCPSyslogServer()
+	tcp := CreateTCPSyslogServer("11515")
+	tcp_site := CreateTCPSyslogServer("11516")
+	tcp_site2 := CreateTCPSyslogServer("11517")
 	web := CreateHTTPSyslogServer()
 	shuttle := CreateShuttle(mem)
 
@@ -120,21 +133,27 @@ func TestShuttle(t *testing.T) {
 	udp_route := storage.Route{Id:"test", Space:"space", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+udp://127.0.0.1:11514"}
 	tcp_route := storage.Route{Id:"test2", Space:"space2", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11515"}
 	web_route := storage.Route{Id:"test3", Space:"space3", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"http://localhost:3333/tests"}
+	tcp_site_route := storage.Route{Id:"test999", Space:"", App:"", Site:"foobar-hello.com", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11516"}
+	tcp_site_route2 := storage.Route{Id:"test1000", Space:"space55", App:"app55",  Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11517"}
 	(*mem).AddRoute(udp_route)
 	(*mem).AddRoute(tcp_route)
 	(*mem).AddRoute(web_route)
 	shuttle.Refresh()
 
-	// Create some fake messages to listen to.
-	CreateMessage(shuttle, "app", "space", "Oh hello.", "stdout")
-	CreateMessage(shuttle, "app", "space2", "Oh hello3", "stdout")
-	CreateMessage(shuttle, "app", "space3", "Oh hello31", "stdout")
-	CreateMessage(shuttle, "app2", "space", "Oh hello4", "stdout")
-	CreateMessage(shuttle, "app", "space", "Oh hello2.", "stdout")
-	CreateMessage(shuttle, "app", "space2", "Oh hello5", "stdout")
-	CreateMessage(shuttle, "app", "space3", "Oh hello6", "stdout")
+	Convey("Ensure we can post and receive a log message via udp syslog (and in order)", t, func() {
+		CreateHttpMessage(shuttle, "", "", "app", "space", "/some_path", "post", "1.1.1.1", "")
+		logMsg := <-udp
+		So(logMsg["message"], ShouldEqual, "fwd=\"1.1.1.1\" host=app-space path=/some_path")
+	})
 
 	Convey("Ensure we can post and receive a log message via udp syslog (and in order)", t, func() {
+		CreateAppMessage(shuttle, "app", "space", "Oh hello.", "stdout")
+		CreateAppMessage(shuttle, "app", "space2", "Oh hello3", "stdout")
+		CreateAppMessage(shuttle, "app", "space3", "Oh hello31", "stdout")
+		CreateAppMessage(shuttle, "app2", "space", "Oh hello4", "stdout")
+		CreateAppMessage(shuttle, "app", "space", "Oh hello2.", "stdout")
+		CreateAppMessage(shuttle, "app", "space2", "Oh hello5", "stdout")
+		CreateAppMessage(shuttle, "app", "space3", "Oh hello6", "stdout")
 		logMsg := <-udp
 		So(logMsg["message"], ShouldEqual, "Oh hello.")
 		So(logMsg["hostname"], ShouldEqual, "app-space")
@@ -177,8 +196,8 @@ func TestShuttle(t *testing.T) {
 	})
 
 	Convey("Ensure failure of bad routes did not prevent messages from routing.", t, func() {
-		CreateMessage(shuttle, "app", "space", "oh boy", "stdout")
-		CreateMessage(shuttle, "app", "space2", "oh girl", "stdout")
+		CreateAppMessage(shuttle, "app", "space", "oh boy", "stdout")
+		CreateAppMessage(shuttle, "app", "space2", "oh girl", "stdout")
 		logMsg := <-tcp
 		So(logMsg["message"], ShouldEqual, "oh girl")
 		So(logMsg["hostname"], ShouldEqual, "app-space2")
@@ -188,7 +207,7 @@ func TestShuttle(t *testing.T) {
 	})
 
 	Convey("Ensure we specify an error severity if sent from stderr.", t, func() {
-		CreateMessage(shuttle, "app", "space2", "oh error", "stderr")
+		CreateAppMessage(shuttle, "app", "space2", "oh error", "stderr")
 		logMsg := <-tcp
 		So(logMsg["message"], ShouldEqual, "oh error")
 		So(logMsg["hostname"], ShouldEqual, "app-space2")
@@ -205,7 +224,7 @@ func TestShuttle(t *testing.T) {
 		routes, ok := shuttle.routes["appspace"]
 		So(ok, ShouldEqual, true)
 		So(len(routes), ShouldEqual, 0)
-		CreateMessage(shuttle, "app", "space", "Oh hello.", "stdout")
+		CreateAppMessage(shuttle, "app", "space", "Oh hello.", "stdout")
 		So(len(udp), ShouldEqual, 0)
 		count, err = drains.DrainCount(udp_route.DestinationUrl)
 		So(err, ShouldEqual, nil)
@@ -226,6 +245,17 @@ func TestShuttle(t *testing.T) {
 		count, err = drains.DrainCount("syslog+tcp://127.0.0.1:11515")
 		So(err, ShouldEqual, nil)
 		So(count, ShouldEqual, 2)
-	
+	})
+
+	Convey("Ensure we can receive site routes, and both app and site routes are received.", t, func() {
+		(*mem).AddRoute(tcp_site_route)
+		(*mem).AddRoute(tcp_site_route2)
+		shuttle.Refresh()
+		//
+		CreateHttpMessage(shuttle, "foobar-hello.com", "/other_path", "app55", "space55", "/some_path", "post", "1.1.1.1", "")
+		logMsg := <- tcp_site2
+		So(logMsg["message"], ShouldEqual, "fwd=\"1.1.1.1\" host=app55-space55 path=/some_path")
+		logMsg = <- tcp_site
+		So(logMsg["message"], ShouldEqual, "fwd=\"1.1.1.1\" host=foobar-hello.com path=/other_path")
 	})
 }

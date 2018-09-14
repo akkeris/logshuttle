@@ -37,6 +37,9 @@ type LogSpec struct {
 	Kubernetes KubernetesSpec `json:"kubernetes"`
 	Topic      string         `json:"topic"`
 	Tag        string         `json:"tag"`
+	Site       string         `json:"site,omitempty"`
+	SitePath   string         `json:"site,omitempty"`
+	Path   string         	  `json:"site,omitempty"`
 }
 
 func CreateProducer(kafkaAddrs []string, kafkaGroup string) *kafka.Producer {
