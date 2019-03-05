@@ -6,6 +6,7 @@ import (
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"net/http"
 	"strings"
+	"strconv"
 	"time"
 	"log"
 )
@@ -20,6 +21,25 @@ type Session struct {
 	group    string
 }
 
+type IstioLog struct {
+	Time       	time.Time	`json:"time"`
+	Severity 	string	`json:"severity"`
+	Bytes		int		`json:"bytes"`
+	Method 		string	`json:"method"`
+	Source		string	`json:"source"`
+	Space		string	`json:"space"`
+	Path		string	`json:"path"`
+	RequestId	string	`json:"request_id"`
+	From		string	`json:"from"`
+	Host		string	`json:"host"`
+	App			string	`json:"app"`
+	Fwd			string	`json:"fwd"`
+	Status		int		`json:"status"`
+	Service		string	`json:"service"`
+	Dyno		string	`json:"dyno"`
+	Total		string	`json:"total"`
+}
+
 func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 	var msg events.LogSpec
 	if err := json.Unmarshal(e.Value, &msg); err == nil {
@@ -27,6 +47,31 @@ func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 			ls.loops = 0
 			proc := ContainerToProc(msg.Kubernetes.ContainerName)
 			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " app[" + proc.Type + "." + strings.Replace(strings.Replace(msg.Kubernetes.PodName, "-"+proc.Type+"-", "", 1), proc.App+"-", "", 1) + "]: " + strings.TrimSpace(KubernetesToHumanReadable(msg.Log)) + "\n"
+			err = WriteAndFlush(log, ls.response)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (ls *Session) RespondWithIstioWebLog(e *kafka.Message) error {
+	var msg IstioLog
+	if err := json.Unmarshal(e.Value, &msg); err == nil {
+		if msg.App == ls.app && msg.Space == ls.space {
+			ls.loops = 0
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkers/router[" + msg.Dyno + "]: " +
+				"bytes=" + strconv.Itoa(msg.Bytes) + " " +
+				"method=" + msg.Method + " " +
+				"path=" + msg.Path + " " +
+				"request_id=" + msg.RequestId + " " +
+				"host=" + msg.Host + " " +
+				"fwd=" + msg.Fwd + " " +
+				"status=" + strconv.Itoa(msg.Status) + " " +
+				"service=" + msg.Service + " " +
+				"total=" + msg.Total + " " +
+				"source=" + msg.Total + "\n"
 			err = WriteAndFlush(log, ls.response)
 			if err != nil {
 				return err
@@ -87,9 +132,9 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 
 	consumer := events.CreateConsumerCluster(kafkaAddrs, ls.group)
 	if ls.site == "" && ls.space != "" {
-		consumer.SubscribeTopics([]string{ls.space, "alamoweblogs", "alamobuildlogs"}, nil)
+		consumer.SubscribeTopics([]string{ls.space, "alamoweblogs", "istio-access-logs", "alamobuildlogs"}, nil)
 	} else if ls.site != "" {
-		consumer.SubscribeTopics([]string{"alamoweblogs"}, nil)
+		consumer.SubscribeTopics([]string{"alamoweblogs", "istio-access-logs"}, nil)
 	} else {
 		consumer.Close()
 		return
@@ -116,6 +161,11 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 				}
 			} else if *e.TopicPartition.Topic == "alamoweblogs" {
 				if err := ls.RespondWithWebLog(e); err != nil {
+					ls.IsOpen = false
+					break
+				}
+			}  else if *e.TopicPartition.Topic == "istio-access-logs" {
+				if err := ls.RespondWithIstioWebLog(e); err != nil {
 					ls.IsOpen = false
 					break
 				}
