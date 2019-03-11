@@ -1,12 +1,12 @@
 package shuttle
 
 import (
-	"../drains"
-	"../syslog"
-	"../storage"
-	"../events"
 	"encoding/json"
 	"log"
+	"logshuttle/drains"
+	"logshuttle/events"
+	"logshuttle/storage"
+	"logshuttle/syslog"
 	"runtime"
 	"strings"
 	"sync"
@@ -15,10 +15,9 @@ import (
 // TODO: Connect on demand (but deal with bad hosts will be tricky)
 // TODO: Mark in storage errors connecting to syslog or drains
 
-
 type Destination struct {
-	route 		  storage.Route
-	drain		  drains.Drain
+	route storage.Route
+	drain drains.Drain
 }
 
 type Shuttle struct {
@@ -27,7 +26,7 @@ type Shuttle struct {
 	failed_decode int
 	test_mode     bool
 	routes        map[string][]Destination
-	route_keys 	  []string
+	route_keys    []string
 	routes_mutex  *sync.Mutex
 	kafka_group   string
 	kafka_addrs   string
@@ -195,37 +194,37 @@ func (sh *Shuttle) RefreshRoutes() {
 		if found == false && rt.DestinationUrl != "syslog+tls://logs.apps.com:40841" {
 			wg.Add(1)
 			go func(rts storage.Route) {
-					var duplicate = false
-					var rts_route_key = rts.GetRouteKey()
-					sh.routes_mutex.Lock()
-					for _, sr := range sh.routes[rts_route_key] {
-						if sr.drain.Url() == rts.DestinationUrl {
-							duplicate = true
-						}
+				var duplicate = false
+				var rts_route_key = rts.GetRouteKey()
+				sh.routes_mutex.Lock()
+				for _, sr := range sh.routes[rts_route_key] {
+					if sr.drain.Url() == rts.DestinationUrl {
+						duplicate = true
 					}
-					sh.routes_mutex.Unlock()
-					if duplicate == false {
-						d, err := drains.Dial(rts.Id, rts.DestinationUrl)
-						if err == nil {
-							sh.routes_mutex.Lock()
-							sh.routes[rts_route_key] = append(sh.routes[rts_route_key], Destination{drain:d, route:rts})
-							var found_key = false
-							for _, v := range sh.route_keys {
-								if v == rts.GetRouteKey() {
-									found_key = true
-								}
+				}
+				sh.routes_mutex.Unlock()
+				if duplicate == false {
+					d, err := drains.Dial(rts.Id, rts.DestinationUrl)
+					if err == nil {
+						sh.routes_mutex.Lock()
+						sh.routes[rts_route_key] = append(sh.routes[rts_route_key], Destination{drain: d, route: rts})
+						var found_key = false
+						for _, v := range sh.route_keys {
+							if v == rts.GetRouteKey() {
+								found_key = true
 							}
-							if found_key == false {
-								sh.route_keys = append(sh.route_keys, rts_route_key)
-							}
-							sh.routes_mutex.Unlock()
-							log.Printf("[shuttle] Adding route: %s with key\n", rts.GetRouteString())
-						} else if err.Error() != "Host is part of a bad host list." {
-							log.Printf("[shuttle] Cannot add route: %s, (%s) will retry in 5 minutes\n", rts.GetRouteString(), err.Error())
 						}
-					} else {
-						log.Printf("[shuttle] Not adding duplicate route: %s\n", rts.GetRouteString())
+						if found_key == false {
+							sh.route_keys = append(sh.route_keys, rts_route_key)
+						}
+						sh.routes_mutex.Unlock()
+						log.Printf("[shuttle] Adding route: %s with key\n", rts.GetRouteString())
+					} else if err.Error() != "Host is part of a bad host list." {
+						log.Printf("[shuttle] Cannot add route: %s, (%s) will retry in 5 minutes\n", rts.GetRouteString(), err.Error())
 					}
+				} else {
+					log.Printf("[shuttle] Not adding duplicate route: %s\n", rts.GetRouteString())
+				}
 				wg.Done()
 			}(rt)
 		}
@@ -260,5 +259,4 @@ func (sh *Shuttle) RefreshRoutes() {
 	}
 	sh.routes_mutex.Unlock()
 
-		
 }

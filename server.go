@@ -1,16 +1,17 @@
 package main
 
 import (
-	"./drains"
-	"./storage"
-	"./shuttle"
-	"./events"
-	"log"
 	"github.com/go-martini/martini"
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
 	"github.com/stackimpact/stackimpact-go"
+	"log"
+	"logshuttle/drains"
+	"logshuttle/events"
+	"logshuttle/shuttle"
+	"logshuttle/storage"
+	"math/rand"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -19,14 +20,11 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"math/rand"
 )
-
 
 type logDrainCreateRequest struct {
 	Url string `json:"url"`
 }
-
 
 type addonResponse struct {
 	Id   string `json:"id"`
@@ -41,8 +39,6 @@ type logDrainResponse struct {
 	UpdatedAt time.Time     `json:"updated_at"`
 	Url       string        `json:"url"`
 }
-
-
 
 func ReportInvalidRequest(r render.Render) {
 	r.JSON(400, "Malformed Request")
@@ -62,7 +58,6 @@ func Filter(vs []string, f func(string) bool) []string {
 	}
 	return vsf
 }
-
 
 func HealthCheck(client *storage.Storage) func(http.ResponseWriter, *http.Request, martini.Params) {
 	return func(res http.ResponseWriter, req *http.Request, params martini.Params) {
@@ -154,7 +149,7 @@ func CreateLogDrain(client *storage.Storage, isSite bool) func(martini.Params, l
 			var app_keys = strings.SplitN(params["key"], "-", 2)
 			var app = app_keys[0]
 			var space = app_keys[1]
-			if (app == "" || space == "") {
+			if app == "" || space == "" {
 				ReportInvalidRequest(r)
 				return
 			}
@@ -191,13 +186,13 @@ func GetLogDrain(client *storage.Storage, isSite bool) func(martini.Params, rend
 			ReportInvalidRequest(r)
 			return
 		}
-		
+
 		var route, err = (*client).GetRouteById(params["id"])
 		if err != nil {
 			r.JSON(404, map[string]interface{}{"message": "No such log drain or app found"})
 			return
 		}
-		if params["key"] != route.Site && params["key"] != (route.App + "-" + route.Space) {
+		if params["key"] != route.Site && params["key"] != (route.App+"-"+route.Space) {
 			r.JSON(404, map[string]interface{}{"message": "No such log drain or app found"})
 			return
 		}
@@ -326,7 +321,7 @@ func main() {
 		log.Printf("Using kafka group logshuttle-testing for testing purposes...\n")
 		kafkaGroup = "logshuttletest"
 	} else {
-		// Purposely wait a random amount of time to allow 
+		// Purposely wait a random amount of time to allow
 		// kafka to more easily balance more than one logshuttle, if the
 		// connection between kafka is too close, partition assignment
 		// can sometimes take a very long time. Seems odd, but helps.
