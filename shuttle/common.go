@@ -1,13 +1,13 @@
 package shuttle
 
 import (
-	"../events"
-	"strings"
+	"encoding/json"
+	"logshuttle/events"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"regexp"
-	"encoding/json"
-	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -58,7 +58,6 @@ func WriteAndFlush(log string, res http.ResponseWriter) error {
 	}
 	return nil
 }
-
 
 func IsAppMatch(potential string, app_name string) bool {
 	return potential == app_name || strings.HasPrefix(potential, app_name+"--")
@@ -152,7 +151,7 @@ func ParseWebLogMessage(data []byte, msg *events.LogSpec) bool {
 				site_path = value[1]
 			} else if value[0] != "timestamp" {
 				reformattedMessage = reformattedMessage + value[0] + "=" + value[1] + " "
-			} 
+			}
 		}
 	}
 	if app == "" || space == "" {
@@ -176,7 +175,6 @@ func ParseWebLogMessage(data []byte, msg *events.LogSpec) bool {
 	msg.Tag = ""
 	return false
 }
-
 
 func KubernetesToHumanReadable(message string) string {
 	// early bail out.

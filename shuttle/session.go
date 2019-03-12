@@ -1,14 +1,14 @@
 package shuttle
 
 import (
-	"../events"
 	"encoding/json"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
-	"net/http"
-	"strings"
-	"strconv"
-	"time"
 	"log"
+	"logshuttle/events"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type Session struct {
@@ -22,22 +22,22 @@ type Session struct {
 }
 
 type IstioLog struct {
-	Time       	time.Time	`json:"time"`
-	Severity 	string	`json:"severity"`
-	Bytes		int		`json:"bytes"`
-	Method 		string	`json:"method"`
-	Source		string	`json:"source"`
-	Space		string	`json:"space"`
-	Path		string	`json:"path"`
-	RequestId	string	`json:"request_id"`
-	From		string	`json:"from"`
-	Host		string	`json:"host"`
-	App			string	`json:"app"`
-	Fwd			string	`json:"fwd"`
-	Status		int		`json:"status"`
-	Service		string	`json:"service"`
-	Dyno		string	`json:"dyno"`
-	Total		string	`json:"total"`
+	Time      time.Time `json:"time"`
+	Severity  string    `json:"severity"`
+	Bytes     int       `json:"bytes"`
+	Method    string    `json:"method"`
+	Source    string    `json:"source"`
+	Space     string    `json:"space"`
+	Path      string    `json:"path"`
+	RequestId string    `json:"request_id"`
+	From      string    `json:"from"`
+	Host      string    `json:"host"`
+	App       string    `json:"app"`
+	Fwd       string    `json:"fwd"`
+	Status    int       `json:"status"`
+	Service   string    `json:"service"`
+	Dyno      string    `json:"dyno"`
+	Total     string    `json:"total"`
 }
 
 func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
@@ -143,7 +143,7 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 
 	for ls.IsOpen == true {
 		ev := consumer.Poll(100)
-		if ls.loops > 10 * 60 * 5 {
+		if ls.loops > 10*60*5 {
 			// we've timed out, 5 minutes.
 			ls.IsOpen = false
 			continue
@@ -164,7 +164,7 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 					ls.IsOpen = false
 					break
 				}
-			}  else if *e.TopicPartition.Topic == "istio-access-logs" {
+			} else if *e.TopicPartition.Topic == "istio-access-logs" {
 				if err := ls.RespondWithIstioWebLog(e); err != nil {
 					ls.IsOpen = false
 					break
