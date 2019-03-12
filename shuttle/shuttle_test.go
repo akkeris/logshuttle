@@ -1,32 +1,32 @@
 package shuttle
 
 import (
-	syslog2 "../syslog"
-	"../storage"
-	"../drains"
-	"../events"
-	. "github.com/smartystreets/goconvey/convey"
-	"github.com/go-martini/martini"
-	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
-	"gopkg.in/mcuadros/go-syslog.v2"
 	"encoding/json"
-	"testing"
-	"time"
+	"fmt"
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/go-martini/martini"
+	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/mcuadros/go-syslog.v2"
 	"io/ioutil"
 	"log"
+	"logshuttle/drains"
+	"logshuttle/events"
+	"logshuttle/storage"
+	syslog2 "logshuttle/syslog"
 	"net/http"
 	"strings"
-	"fmt"
+	"testing"
+	"time"
 )
 
-func CreateMemoryStorage() (*storage.Storage) {
+func CreateMemoryStorage() *storage.Storage {
 	var store storage.MemoryStorage
 	store.Init("")
 	var s storage.Storage = &store
 	return &s
 }
 
-func CreateShuttle(s *storage.Storage) (Shuttle) {
+func CreateShuttle(s *storage.Storage) Shuttle {
 	drains.Init()
 
 	var shuttle Shuttle
@@ -34,7 +34,7 @@ func CreateShuttle(s *storage.Storage) (Shuttle) {
 	return shuttle
 }
 
-func CreateUDPSyslogServer() (syslog.LogPartsChannel) {
+func CreateUDPSyslogServer() syslog.LogPartsChannel {
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
 
@@ -47,7 +47,7 @@ func CreateUDPSyslogServer() (syslog.LogPartsChannel) {
 	return channel
 }
 
-func CreateTCPSyslogServer(port string) (syslog.LogPartsChannel) {
+func CreateTCPSyslogServer(port string) syslog.LogPartsChannel {
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
 
@@ -60,8 +60,7 @@ func CreateTCPSyslogServer(port string) (syslog.LogPartsChannel) {
 	return channel
 }
 
-
-func CreateHTTPTestChannel(channel syslog.LogPartsChannel)  func(http.ResponseWriter, *http.Request) {
+func CreateHTTPTestChannel(channel syslog.LogPartsChannel) func(http.ResponseWriter, *http.Request) {
 	return func(res http.ResponseWriter, req *http.Request) {
 		bytes, err := ioutil.ReadAll(req.Body)
 		if err != nil {
@@ -86,10 +85,10 @@ func CreateHTTPTestChannel(channel syslog.LogPartsChannel)  func(http.ResponseWr
 	}
 }
 
-func CreateHTTPSyslogServer() (syslog.LogPartsChannel) {
+func CreateHTTPSyslogServer() syslog.LogPartsChannel {
 	channel := make(syslog.LogPartsChannel)
 	m := martini.Classic()
-	m.Post("/tests",  CreateHTTPTestChannel(channel))
+	m.Post("/tests", CreateHTTPTestChannel(channel))
 	go m.RunOnAddr(":3333")
 	return channel
 }
@@ -103,20 +102,20 @@ func CreateAppMessage(shuttle Shuttle, app string, space string, message string,
 	e.Log = message
 	e.Stream = stream
 	bytes, _ := json.Marshal(e)
-	k := kafka.Message{TopicPartition: kafka.TopicPartition{Topic:&space, Partition: 0}, Timestamp: time.Now(), Key:[]byte(""), Value:bytes}
+	k := kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &space, Partition: 0}, Timestamp: time.Now(), Key: []byte(""), Value: bytes}
 	shuttle.consumer.AppLogs <- &k
 }
 
 func CreateHttpMessage(shuttle Shuttle, site string, site_path string, app string, space string, app_path string, method string, source string, extra string) {
 	logline := fmt.Sprintf("hostname=%s-%s source=%s path=%s timestamp=%s", app, space, source, app_path, time.Now().UTC().Format(time.RFC3339))
 	if site != "" {
-		logline += " site_domain=" + site + " site_path=" + site_path 
+		logline += " site_domain=" + site + " site_path=" + site_path
 	}
 	if extra != "" {
 		logline += " " + extra
 	}
 	var topic = "alamoweblogs"
-	k := kafka.Message{TopicPartition: kafka.TopicPartition{Topic:&topic, Partition: 0}, Timestamp: time.Now(), Key:[]byte(""), Value:[]byte(logline)}
+	k := kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: 0}, Timestamp: time.Now(), Key: []byte(""), Value: []byte(logline)}
 	shuttle.consumer.WebLogs <- &k
 }
 
@@ -130,11 +129,11 @@ func TestShuttle(t *testing.T) {
 	shuttle := CreateShuttle(mem)
 
 	// Add the UDP and TCP syslog listeners
-	udp_route := storage.Route{Id:"test", Space:"space", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+udp://127.0.0.1:11514"}
-	tcp_route := storage.Route{Id:"test2", Space:"space2", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11515"}
-	web_route := storage.Route{Id:"test3", Space:"space3", App:"app", Created:time.Now(), Updated:time.Now(), DestinationUrl:"http://localhost:3333/tests"}
-	tcp_site_route := storage.Route{Id:"test999", Space:"", App:"", Site:"foobar-hello.com", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11516"}
-	tcp_site_route2 := storage.Route{Id:"test1000", Space:"space55", App:"app55",  Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11517"}
+	udp_route := storage.Route{Id: "test", Space: "space", App: "app", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+udp://127.0.0.1:11514"}
+	tcp_route := storage.Route{Id: "test2", Space: "space2", App: "app", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+tcp://127.0.0.1:11515"}
+	web_route := storage.Route{Id: "test3", Space: "space3", App: "app", Created: time.Now(), Updated: time.Now(), DestinationUrl: "http://localhost:3333/tests"}
+	tcp_site_route := storage.Route{Id: "test999", Space: "", App: "", Site: "foobar-hello.com", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+tcp://127.0.0.1:11516"}
+	tcp_site_route2 := storage.Route{Id: "test1000", Space: "space55", App: "app55", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+tcp://127.0.0.1:11517"}
 	(*mem).AddRoute(udp_route)
 	(*mem).AddRoute(tcp_route)
 	(*mem).AddRoute(web_route)
@@ -186,9 +185,9 @@ func TestShuttle(t *testing.T) {
 	})
 
 	Convey("Ensure adding a bad route doesnt get acknowledged.", t, func() {
-		(*mem).AddRoute(storage.Route{Id:"test5", Space:"space", App:"app3", Created:time.Now(), Updated:time.Now(), DestinationUrl:"this is not a destination url.."})
+		(*mem).AddRoute(storage.Route{Id: "test5", Space: "space", App: "app3", Created: time.Now(), Updated: time.Now(), DestinationUrl: "this is not a destination url.."})
 		shuttle.Refresh()
-		(*mem).AddRoute(storage.Route{Id:"test6", Space:"space", App:"app4", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://10.243.243.243:10"})
+		(*mem).AddRoute(storage.Route{Id: "test6", Space: "space", App: "app4", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+tcp://10.243.243.243:10"})
 		shuttle.Refresh()
 		So(len(shuttle.routes), ShouldEqual, 3)
 		So(len(shuttle.routes["appspace"]), ShouldEqual, 1)
@@ -232,8 +231,8 @@ func TestShuttle(t *testing.T) {
 	})
 
 	Convey("Ensure two routes with the same drain, removing one route doesnt remove the drain", t, func() {
-		route1 := storage.Route{Id:"test55", Space:"space5", App:"app1", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11515"}
-		route2 := storage.Route{Id:"test66", Space:"space6", App:"app2", Created:time.Now(), Updated:time.Now(), DestinationUrl:"syslog+tcp://127.0.0.1:11515"}
+		route1 := storage.Route{Id: "test55", Space: "space5", App: "app1", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+tcp://127.0.0.1:11515"}
+		route2 := storage.Route{Id: "test66", Space: "space6", App: "app2", Created: time.Now(), Updated: time.Now(), DestinationUrl: "syslog+tcp://127.0.0.1:11515"}
 		(*mem).AddRoute(route1)
 		(*mem).AddRoute(route2)
 		shuttle.Refresh()
@@ -253,9 +252,9 @@ func TestShuttle(t *testing.T) {
 		shuttle.Refresh()
 		//
 		CreateHttpMessage(shuttle, "foobar-hello.com", "/other_path", "app55", "space55", "/some_path", "post", "1.1.1.1", "")
-		logMsg := <- tcp_site2
+		logMsg := <-tcp_site2
 		So(logMsg["message"], ShouldEqual, "fwd=\"1.1.1.1\" host=app55-space55 path=/some_path")
-		logMsg = <- tcp_site
+		logMsg = <-tcp_site
 		So(logMsg["message"], ShouldEqual, "fwd=\"1.1.1.1\" host=foobar-hello.com path=/other_path")
 	})
 }

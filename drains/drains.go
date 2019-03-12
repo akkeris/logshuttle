@@ -2,30 +2,30 @@ package drains
 
 import (
 	"fmt"
+	"logshuttle/syslog"
 	"strings"
 	"sync"
 	"time"
-	"../syslog"
 )
 
 type Drain interface {
-	Init(Id string, Url string) (error)
+	Init(Id string, Url string) error
 	Flush()
 	PrintMetrics()
-	Packets() (chan syslog.Packet)
+	Packets() chan syslog.Packet
 	Id() string
 	Url() string
 	Close()
 }
 
-var drains_mutex *sync.Mutex;
-var drains map[string]Drain;
-var drains_count map[string]int;
-var drain_keys []string;
-var bad_hosts_mutex *sync.Mutex;
-var bad_hosts map[string]bool;
+var drains_mutex *sync.Mutex
+var drains map[string]Drain
+var drains_count map[string]int
+var drain_keys []string
+var bad_hosts_mutex *sync.Mutex
+var bad_hosts map[string]bool
 
-const MaxLogSize int = 99990;
+const MaxLogSize int = 99990
 
 func PrintMetrics() {
 	drains_mutex.Lock()
@@ -88,7 +88,7 @@ func DrainCount(Url string) (int, error) {
 	}
 }
 
-func Undial(Id string, Url string) (error) {
+func Undial(Id string, Url string) error {
 	drains_mutex.Lock()
 	defer drains_mutex.Unlock()
 	if val, ok := drains_count[Url]; ok {
@@ -153,4 +153,3 @@ func Init() {
 		}
 	}()
 }
-

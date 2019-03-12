@@ -1,34 +1,34 @@
 package drains
 
 import (
-	"log"
 	"fmt"
 	"hash/crc32"
+	"log"
+	"logshuttle/syslog"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"../syslog"
-	"os"
-	"strconv"
 )
 
 type SyslogDrain struct {
-	id string
-	MaxConnections uint32
+	id                 string
+	MaxConnections     uint32
 	initialConnections int
-	bufferSize int
-	destinationUrl string
-	packets chan syslog.Packet
-	stopChan chan struct{}
-	conns []*syslog.Logger
-	Attempting uint32
-	Sent uint32
-	Mutex *sync.Mutex
-	Pressure float64
+	bufferSize         int
+	destinationUrl     string
+	packets            chan syslog.Packet
+	stopChan           chan struct{}
+	conns              []*syslog.Logger
+	Attempting         uint32
+	Sent               uint32
+	Mutex              *sync.Mutex
+	Pressure           float64
 }
 
-func (l *SyslogDrain) Url() (string) {
+func (l *SyslogDrain) Url() string {
 	return l.destinationUrl
 }
 
@@ -36,7 +36,7 @@ func (l *SyslogDrain) Id() string {
 	return l.id
 }
 
-func (l *SyslogDrain) Packets() (chan syslog.Packet) {
+func (l *SyslogDrain) Packets() chan syslog.Packet {
 	return l.packets
 }
 
@@ -76,7 +76,7 @@ func (p *SyslogDrain) connect(increasePool bool, pressure float64) error {
 	p.conns = append(p.conns, dest)
 
 	if increasePool {
-		log.Printf("[drains] Increasing pool size for %s to %d because back pressure was %f%%\n", p.destinationUrl, p.OpenConnections(), pressure * 100)
+		log.Printf("[drains] Increasing pool size for %s to %d because back pressure was %f%%\n", p.destinationUrl, p.OpenConnections(), pressure*100)
 	}
 	atomic.StoreUint32(&p.Attempting, 0)
 	return nil
@@ -88,9 +88,9 @@ func (p *SyslogDrain) OpenConnections() uint32 {
 
 func (p *SyslogDrain) PrintMetrics() {
 	p.Mutex.Lock()
-	log.Printf("[metrics] syslog=%s max#connections=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", p.destinationUrl, p.MaxConnections, p.OpenConnections(), p.Pressure * 100, p.Sent)
+	log.Printf("[metrics] syslog=%s max#connections=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", p.destinationUrl, p.MaxConnections, p.OpenConnections(), p.Pressure*100, p.Sent)
 	if p.Pressure > 0.98 && p.OpenConnections() == p.MaxConnections {
-		log.Printf("[alert] We've reached our maximum allocated connection count %d and our back pressure is still high %f.\n[alert] If this isn't during startup this could mean a loss of log data.\n", p.OpenConnections(), p.Pressure * 100 )
+		log.Printf("[alert] We've reached our maximum allocated connection count %d and our back pressure is still high %f.\n[alert] If this isn't during startup this could mean a loss of log data.\n", p.OpenConnections(), p.Pressure*100)
 	}
 	for ndx, conn := range p.conns {
 		log.Printf("[metrics] syslog[%d]=%s count#sent=%d count#errors=%d sample#avgtime=%fs\n", ndx, p.destinationUrl, conn.SentCount, conn.ErrorsCount, conn.AvgWriteTime.Seconds())
@@ -110,7 +110,7 @@ func (p *SyslogDrain) Init(Id string, DestinationUrl string) error {
 	if err == nil && max_conns > 0 && max_conns < 1025 {
 		p.MaxConnections = uint32(max_conns)
 	}
-	
+
 	p.initialConnections = 1
 	p.bufferSize = 512
 	p.destinationUrl = DestinationUrl
@@ -132,7 +132,7 @@ func (p *SyslogDrain) Init(Id string, DestinationUrl string) error {
 			log.Printf("[drains]  Connection was closed to %s due to %s\n", p.destinationUrl, err)
 		}
 	}
-	if(p.OpenConnections() == 0) {
+	if p.OpenConnections() == 0 {
 		return fmt.Errorf("Unable to establish connection to %s", p.destinationUrl)
 	}
 	go p.writeLoop()
@@ -151,22 +151,22 @@ func (p *SyslogDrain) Close() {
 func (p *SyslogDrain) writeLoop() {
 	for {
 		select {
-			case packet := <- p.packets:
-				p.Mutex.Lock()
-				p.Sent++
-				// Ensure the same host goes down the same connection so we keep logs in 
-				// order, this could hypothetically cause "hot" connections. Use a CRC to
-				// calculate a int32 then mod (bound it) to the amount of open connections
-				// so its deterministic in the connection it picks.
-				ndx := uint32(crc32.ChecksumIEEE([]byte(packet.Tag)) % p.OpenConnections())
-				p.conns[ndx].Packets <- packet
-				p.Pressure = (p.Pressure + (float64(len(p.packets)) / float64(cap(p.packets)))) / float64(2)
-				if(p.Pressure > 0.1 && p.OpenConnections() < p.MaxConnections) {
-					go p.connect(true, p.Pressure)
-				}
-				p.Mutex.Unlock()
-			case <- p.stopChan:
-				return
+		case packet := <-p.packets:
+			p.Mutex.Lock()
+			p.Sent++
+			// Ensure the same host goes down the same connection so we keep logs in
+			// order, this could hypothetically cause "hot" connections. Use a CRC to
+			// calculate a int32 then mod (bound it) to the amount of open connections
+			// so its deterministic in the connection it picks.
+			ndx := uint32(crc32.ChecksumIEEE([]byte(packet.Tag)) % p.OpenConnections())
+			p.conns[ndx].Packets <- packet
+			p.Pressure = (p.Pressure + (float64(len(p.packets)) / float64(cap(p.packets)))) / float64(2)
+			if p.Pressure > 0.1 && p.OpenConnections() < p.MaxConnections {
+				go p.connect(true, p.Pressure)
+			}
+			p.Mutex.Unlock()
+		case <-p.stopChan:
+			return
 		}
 	}
 }

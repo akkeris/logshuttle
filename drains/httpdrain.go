@@ -1,35 +1,35 @@
 package drains
 
 import (
+	"bytes"
 	"log"
-	"sync"
+	"logshuttle/syslog"
 	"net/http"
 	"net/url"
-	"time"
-	"../syslog"
 	"strconv"
-	"bytes"
+	"sync"
+	"time"
 )
 
 type HttpDrain struct {
-	id 		 string
-	url      string
-	packets  chan syslog.Packet
-	buffered []syslog.Packet
-	frame    int
-	trans    *http.Transport
-	client   *http.Client
-	mutex 	 *sync.Mutex
-	sent     int
-	conns    int
-	errors   int
+	id         string
+	url        string
+	packets    chan syslog.Packet
+	buffered   []syslog.Packet
+	frame      int
+	trans      *http.Transport
+	client     *http.Client
+	mutex      *sync.Mutex
+	sent       int
+	conns      int
+	errors     int
 	pretty_url *url.URL
-	pressure float64
-	draining bool
-	closed   bool
+	pressure   float64
+	draining   bool
+	closed     bool
 }
 
-func (l *HttpDrain) Init(Id string, Url string) (error) {
+func (l *HttpDrain) Init(Id string, Url string) error {
 	log.Printf("[drains]  Creating URL drain to %s\n", Url)
 	l.id = Id
 	l.url = Url
@@ -53,7 +53,7 @@ func (l *HttpDrain) Init(Id string, Url string) (error) {
 	return nil
 }
 
-func (l *HttpDrain) Packets() (chan syslog.Packet) {
+func (l *HttpDrain) Packets() chan syslog.Packet {
 	return l.packets
 }
 
@@ -70,7 +70,7 @@ func (l *HttpDrain) Id() string {
 }
 
 func (l *HttpDrain) PrintMetrics() {
-	log.Printf("[metrics] syslog=%s://%s%s max#connections=-1 count#errors=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", l.pretty_url.Scheme, l.pretty_url.Host, l.pretty_url.Path, l.errors, l.conns, l.pressure * 100, l.sent)
+	log.Printf("[metrics] syslog=%s://%s%s max#connections=-1 count#errors=%d count#connections=%d measure#pressure=%f%% count#sent=%d\n", l.pretty_url.Scheme, l.pretty_url.Host, l.pretty_url.Path, l.errors, l.conns, l.pressure*100, l.sent)
 	l.sent = 0
 	l.conns = 0
 	l.errors = 0
@@ -87,7 +87,7 @@ func (l *HttpDrain) Flush() {
 
 	body := ""
 	size := 0
-	l.pressure = float64(len(l.buffered))/float64(1024)
+	l.pressure = float64(len(l.buffered)) / float64(1024)
 	if len(l.buffered) == 0 {
 		l.draining = false
 		return
@@ -116,7 +116,7 @@ func (l *HttpDrain) Flush() {
 			l.errors++
 		}
 	} else {
-		log.Printf("[drains] Error getting a drain: %s\n", err);
+		log.Printf("[drains] Error getting a drain: %s\n", err)
 	}
 	l.draining = false
 }
