@@ -61,7 +61,7 @@ func (ls *Session) RespondWithIstioWebLog(e *kafka.Message) error {
 	if err := json.Unmarshal(e.Value, &msg); err == nil {
 		if msg.App == ls.app && msg.Space == ls.space {
 			ls.loops = 0
-			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkers/router[" + msg.Dyno + "]: " +
+			log := e.Timestamp.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkers/router[" + msg.Dyno + "]: " +
 				"bytes=" + strconv.Itoa(msg.Bytes) + " " +
 				"method=" + msg.Method + " " +
 				"path=" + msg.Path + " " +
