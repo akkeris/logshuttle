@@ -3,7 +3,7 @@ package drains
 import (
 	"bytes"
 	"log"
-	"logshuttle/syslog"
+	"github.com/akkeris/logshuttle/syslog"
 	"net/http"
 	"net/url"
 	"strconv"

@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
-	"logshuttle/events"
+	"github.com/akkeris/logshuttle/events"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -19,25 +18,6 @@ type Session struct {
 	space    string
 	site     string
 	group    string
-}
-
-type IstioLog struct {
-	Time      time.Time `json:"time"`
-	Severity  string    `json:"severity"`
-	Bytes     int       `json:"bytes"`
-	Method    string    `json:"method"`
-	Source    string    `json:"source"`
-	Space     string    `json:"space"`
-	Path      string    `json:"path"`
-	RequestId string    `json:"request_id"`
-	From      string    `json:"from"`
-	Host      string    `json:"host"`
-	App       string    `json:"app"`
-	Fwd       string    `json:"fwd"`
-	Status    int       `json:"status"`
-	Service   string    `json:"service"`
-	Dyno      string    `json:"dyno"`
-	Total     string    `json:"total"`
 }
 
 func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
@@ -57,22 +37,18 @@ func (ls *Session) RespondWithAppLog(e *kafka.Message) error {
 }
 
 func (ls *Session) RespondWithIstioWebLog(e *kafka.Message) error {
-	var msg IstioLog
-	if err := json.Unmarshal(e.Value, &msg); err == nil {
-		if msg.App == ls.app && msg.Space == ls.space {
-			ls.loops = 0
-			log := e.Timestamp.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkers/router[" + msg.Dyno + "]: " +
-				"bytes=" + strconv.Itoa(msg.Bytes) + " " +
-				"method=" + msg.Method + " " +
-				"path=" + msg.Path + " " +
-				"request_id=" + msg.RequestId + " " +
-				"host=" + msg.Host + " " +
-				"fwd=" + msg.Fwd + " " +
-				"status=" + strconv.Itoa(msg.Status) + " " +
-				"service=" + msg.Service + " " +
-				"total=" + msg.Total + " " +
-				"source=" + msg.Total + "\n"
-			err = WriteAndFlush(log, ls.response)
+	var msg events.LogSpec
+	if ParseIstioWebLogMessage(e.Value, &msg) == false && ((IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space) || (msg.Site != "" && msg.Site == ls.site)) {
+		ls.loops = 0
+		if msg.Site == "" {
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/router: " + msg.Log + " host=" + msg.Kubernetes.ContainerName + " path=" + msg.Path + "\n"
+			err := WriteAndFlush(log, ls.response)
+			if err != nil {
+				return err
+			}
+		} else {
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + msg.Site + " akkeris/router: " + msg.Log + " host=" + msg.Site + " path=" + msg.SitePath + "\n"
+			err := WriteAndFlush(log, ls.response)
 			if err != nil {
 				return err
 			}

@@ -3,6 +3,7 @@ package events
 import (
 	"errors"
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
+	"os"
 	"log"
 	"strings"
 )
@@ -13,14 +14,19 @@ type Process struct {
 }
 
 func CreateConsumerCluster(kafkaAddrs []string, kafkaGroup string) *kafka.Consumer {
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	config := kafka.ConfigMap{
 		"bootstrap.servers":       strings.Join(kafkaAddrs, ","),
 		"group.id":                kafkaGroup,
 		"enable.auto.commit":      true,
 		"auto.commit.interval.ms": 1000,
 		"session.timeout.ms":      30000,
 		"socket.keepalive.enable": true,
-	})
+	}
+	if os.Getenv("DEBUG") == "true" {
+		config.SetKey("debug", "all")
+	}
+	// See: https://github.com/edenhill/librdkafka/tree/master/CONFIGURATION.md
+	c, err := kafka.NewConsumer(&config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,6 +38,7 @@ type LogConsumer struct {
 	AppLogs       chan *kafka.Message
 	BuildLogs     chan *kafka.Message
 	WebLogs       chan *kafka.Message
+	IstioWebLogs  chan *kafka.Message
 	IsOpen        bool
 	address       []string
 	group         string
@@ -65,6 +72,8 @@ func (lc *LogConsumer) runPooler() {
 				continue
 			} else if *msg.TopicPartition.Topic == "alamoweblogs" {
 				lc.WebLogs <- msg
+			} else if *msg.TopicPartition.Topic == "istio-access-logs" {
+				lc.IstioWebLogs <- msg
 			} else if *msg.TopicPartition.Topic == "alamobuildlogs" {
 				lc.BuildLogs <- msg
 			} else {
@@ -124,6 +133,7 @@ func (lc *LogConsumer) Open() error {
 	lc.AppLogs = make(chan *kafka.Message)
 	lc.BuildLogs = make(chan *kafka.Message)
 	lc.WebLogs = make(chan *kafka.Message)
+	lc.IstioWebLogs = make(chan *kafka.Message)
 	lc.IsOpen = true
 	go lc.runPooler()
 	return nil

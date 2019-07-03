@@ -3,10 +3,10 @@ package shuttle
 import (
 	"encoding/json"
 	"log"
-	"logshuttle/drains"
-	"logshuttle/events"
-	"logshuttle/storage"
-	"logshuttle/syslog"
+	"github.com/akkeris/logshuttle/drains"
+	"github.com/akkeris/logshuttle/events"
+	"github.com/akkeris/logshuttle/storage"
+	"github.com/akkeris/logshuttle/syslog"
 	"runtime"
 	"strings"
 	"sync"
@@ -58,6 +58,27 @@ func (sh *Shuttle) forwardAppLogs() {
 			sh.failed_decode++
 		} else {
 			sh.SendMessage(msg)
+		}
+	}
+}
+
+func (sh *Shuttle) forwardIstioWebLogs() {
+	for e := range sh.consumer.IstioWebLogs {
+		var msg events.LogSpec
+		sh.received++
+		if err := ParseIstioWebLogMessage(e.Value, &msg); err == true {
+			sh.failed_decode++
+		} else {
+			var orgLog = msg.Log
+			msg.Log = msg.Log + " host=" + msg.Kubernetes.ContainerName + "-" + msg.Topic + " path=" + msg.Path
+			sh.SendMessage(msg)
+			if msg.Site != "" {
+				msg.Log = orgLog + " host=" + msg.Site + " path=" + msg.SitePath
+				msg.Kubernetes.PodName = "akkeris/router"
+				msg.Kubernetes.ContainerName = msg.Site
+				msg.Topic = ""
+				sh.SendMessage(msg)
+			}
 		}
 	}
 }
@@ -115,6 +136,9 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 
 	// Start listening to web logs
 	go sh.forwardWebLogs()
+
+	// Start listening to istio web logs
+	go sh.forwardIstioWebLogs()
 
 	// Start listening to build logs
 	go sh.forwardBuildLogs()

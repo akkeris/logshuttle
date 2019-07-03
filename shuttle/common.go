@@ -2,13 +2,14 @@ package shuttle
 
 import (
 	"encoding/json"
-	"logshuttle/events"
+	"github.com/akkeris/logshuttle/events"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+	"strconv"
 )
 
 // Boilerplate random string generator
@@ -63,11 +64,67 @@ func IsAppMatch(potential string, app_name string) bool {
 	return potential == app_name || strings.HasPrefix(potential, app_name+"--")
 }
 
+type istioLogSpec struct {
+	Time      time.Time `json:"time"`
+	Severity  string    `json:"severity"`
+	Bytes     int       `json:"bytes"`
+	Method    string    `json:"method"`
+	Source    string    `json:"source"`
+	Space     string    `json:"space"`
+	Path      string    `json:"path"`
+	RequestId string    `json:"request_id"`
+	Origin	  string	`json:"origin,omitempty"`
+	From      string    `json:"from"`
+	Host      string    `json:"host"`
+	App       string    `json:"app"`
+	Fwd       string    `json:"fwd"`
+	Status    int       `json:"status"`
+	Service   string    `json:"service"`
+	Dyno      string    `json:"dyno"`
+	Total     string    `json:"total"`
+}
+
 type buildLogSpec struct {
 	Metadata string `json:"metadata"`
 	Build    int    `json:"build"`
 	Job      string `json:"job"`
 	Message  string `json:"message"`
+}
+
+func ParseIstioWebLogMessage(data []byte, msg *events.LogSpec) bool {
+	var istioMsg istioLogSpec
+	if err := json.Unmarshal(data, &istioMsg); err != nil {
+		return true
+	}
+
+	msg.Log = "bytes=" + strconv.Itoa(istioMsg.Bytes) + " " +
+		"method=" + istioMsg.Method + " " +
+		"request_id=" + istioMsg.RequestId + " " +
+		"fwd=" + istioMsg.Fwd + " " +
+		"origin=" + istioMsg.Origin + " " +
+		"status=" + strconv.Itoa(istioMsg.Status) + " " +
+		"service=" + istioMsg.Service + " " +
+		"total=" + istioMsg.Total + " " +
+		"source=" + istioMsg.Source + " " +
+		"dyno=" + istioMsg.Dyno
+
+	msg.Stream = ""
+	msg.Time = time.Now()
+	msg.Space = istioMsg.Space
+	msg.Site = "" // TODO
+	msg.SitePath = "" // TODO
+	msg.Path = istioMsg.Path
+	msg.Kubernetes.NamespaceName = istioMsg.Space
+	msg.Kubernetes.PodId = ""
+	msg.Kubernetes.PodName = "akkeris/router"
+	msg.Kubernetes.ContainerName = istioMsg.App
+	msg.Kubernetes.Labels.Name = ""
+	msg.Kubernetes.Labels.PodTemplateHash = ""
+	msg.Kubernetes.Host = ""
+	msg.Topic = istioMsg.Space
+	msg.Tag = ""
+
+	return false
 }
 
 func ParseBuildLogMessage(data []byte, msg *events.LogSpec) bool {
