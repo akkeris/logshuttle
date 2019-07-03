@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"log"
-	"logshuttle/syslog"
+	"github.com/akkeris/logshuttle/syslog"
 	"os"
 	"strconv"
 	"strings"

@@ -2,7 +2,7 @@ package drains
 
 import (
 	"fmt"
-	"logshuttle/syslog"
+	"github.com/akkeris/logshuttle/syslog"
 	"strings"
 	"sync"
 	"time"
