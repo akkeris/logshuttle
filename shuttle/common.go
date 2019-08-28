@@ -3,43 +3,12 @@ package shuttle
 import (
 	"encoding/json"
 	"github.com/akkeris/logshuttle/events"
-	"math/rand"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
 	"strconv"
 )
-
-// Boilerplate random string generator
-var randomSource = rand.NewSource(time.Now().UnixNano())
-
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-const (
-	letterIdxBits = 6                    // 6 bits to represent a letter index
-	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
-)
-
-func RandomString(n int) string {
-	b := make([]byte, n)
-
-	// A randomSource.Int63() generates 63 random bits, enough for letterIdxMax characters!
-	for i, cache, remain := n-1, randomSource.Int63(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			cache, remain = randomSource.Int63(), letterIdxMax
-		}
-		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= letterIdxBits
-		remain--
-	}
-
-	return string(b)
-}
 
 func ContainerToProc(container string) events.Process {
 	proc := events.Process{App: container, Type: "web"}
@@ -48,16 +17,6 @@ func ContainerToProc(container string) events.Process {
 		proc = events.Process{App: components[0], Type: components[1]}
 	}
 	return proc
-}
-
-func WriteAndFlush(log string, res http.ResponseWriter) error {
-	_, err := res.Write([]byte(log))
-	if err != nil {
-		return err
-	} else if f, ok := res.(http.Flusher); ok {
-		f.Flush()
-	}
-	return nil
 }
 
 func IsAppMatch(potential string, app_name string) bool {
