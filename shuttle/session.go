@@ -171,7 +171,7 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 			continue
 		}
 		// we've timed out, 1 minute with no messages.
-		if ls.loops > 10*60 {
+		if ls.loops > 10 * 60 {
 			ls.IsOpen = false
 			if debug {
 				log.Printf("[debug] request context timed out %s[group: %s]\n", subject, ls.group)

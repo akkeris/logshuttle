@@ -86,6 +86,9 @@ func ParseIstioWebLogMessage(data []byte, msg *events.LogSpec) bool {
 	return false
 }
 
+
+var rex *regexp.Regexp
+
 func ParseBuildLogMessage(data []byte, msg *events.LogSpec) bool {
 	var bmsg buildLogSpec
 	if err := json.Unmarshal(data, &bmsg); err != nil {
@@ -105,12 +108,9 @@ func ParseBuildLogMessage(data []byte, msg *events.LogSpec) bool {
 		if app == "" || space == "" {
 			return true
 		}
-
-		rex, err := regexp.Compile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
-		if err == nil {
-			bmsg.Message = rex.ReplaceAllString(bmsg.Message, "${1}...")
+		if rex == nil {
+			rex = regexp.MustCompile("(Step \\d+/\\d+ : ARG [0-9A-Za-z_]+=).*")
 		}
-
 		msg.Log = bmsg.Message
 		msg.Stream = ""
 		msg.Time = time.Now()
