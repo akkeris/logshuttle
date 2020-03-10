@@ -1,5 +1,7 @@
 const http = require('http')
 const https = require('https')
+const opentsdb = require('opentsdb')
+const opentsdb_socket = require('opentsdb-socket')
 const url = require('url')
 const system_name = process.env.ALAMO_APPLICATION
 const system_uri = process.env.URL
@@ -19,6 +21,9 @@ console.assert(papertrail_token, 'The papertrial token was not found.')
 console.assert(influxdb, 'Influxdb was not found.')
 
 console.log("System:", system_name)
+
+var socket = opentsdb_socket();
+socket.host(influxdb);
 
 function wait(time) {
   return new Promise((resolve, reject) => {
@@ -49,6 +54,35 @@ function fetch(uri, method, headers, data) {
   })
 }
 
+function opentsdb_write(metric, successful, name, drift) {
+  return new Promise((resolve, reject) => {
+    try {
+      socket.connect();
+      console.log(socket.status())
+    } catch (error) {
+      console.error(error)
+    }
+
+    let value = '';
+    value += 'put ';
+    value += 'logs '
+    value += Date.now();
+    value += ' type=' + metric;
+    value += ' succesful=' + successful;
+    value += ' host=' + name;
+    value += ' drift=' + drift;
+
+    let req = socket.write(value, function ack() {
+      try {
+        resolve('data written');
+      } catch (e) {
+        resolve('failed to write data')
+      }
+      socket.end();
+    })
+  })
+}
+
 async function record(name, metric, successful, drift, begin_date, end_date) {
   if(process.env.TEST_MODE) {
     console.log("=> write " + metric + ' successful=' + successful + ' host=' + name + " drift=" + drift)
@@ -56,7 +90,7 @@ async function record(name, metric, successful, drift, begin_date, end_date) {
     if(drift < 0) {
       drift = 0
     }
-    await fetch(influxdb + '/write?db=logmonitor&_http_tag=' + name, 'POST', {}, 'logs,type=' + metric + ',successful=' + successful + ',host=' + name + ' drift=' + drift)
+    await opentsdb_write(metric, successful, name, drift)
     await wait(100)
   }
 }
