@@ -25,6 +25,13 @@ console.log("System:", system_name)
 var socket = opentsdb_socket();
 socket.host(influxdb);
 
+try {
+  socket.connect();
+  console.log(socket.status())
+} catch (error) {
+  console.error(error)
+}
+
 function wait(time) {
   return new Promise((resolve, reject) => {
     setTimeout(() => { resolve() }, time)
@@ -57,7 +64,6 @@ function fetch(uri, method, headers, data) {
 function opentsdb_write(metric, successful, name, drift) {
   return new Promise((resolve, reject) => {
     try {
-      socket.connect();
       console.log(socket.status())
     } catch (error) {
       console.error(error)
@@ -72,13 +78,12 @@ function opentsdb_write(metric, successful, name, drift) {
     value += ' host=' + name;
     value += ' drift=' + drift;
 
-    let req = socket.write(value, function ack() {
+    socket.write(value, function ack() {
       try {
         resolve('data written');
       } catch (e) {
         resolve('failed to write data')
       }
-      socket.end();
     })
   })
 }
