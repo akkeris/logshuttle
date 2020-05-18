@@ -1,2 +1,4 @@
 .env
 logshuttle
+*.env
+node_modules

@@ -1,6 +1,5 @@
 const http = require('http')
 const https = require('https')
-const opentsdb = require('opentsdb')
 const opentsdb_socket = require('opentsdb-socket')
 const url = require('url')
 const system_name = process.env.ALAMO_APPLICATION
@@ -8,6 +7,7 @@ const system_uri = process.env.URL
 console.assert(system_uri && system_uri !== "", 'No URL was provided.')
 const papertrail_token = process.env.PAPERTRAIL_TOKEN
 const influxdb = process.env.INFLUXDB
+const influxdb_port = process.env.INFLUXDB_PORT || 4242
 const port = process.env.PORT || 9000
 
 const timeout_on_search = parseInt(process.env.TIMEOUT_ON_SEARCH || '3600', 10)
@@ -24,12 +24,22 @@ console.log("System:", system_name)
 
 var socket = opentsdb_socket();
 socket.host(influxdb);
+socket.port(influxdb_port);
+socket.on( 'error', onError );
 
 try {
   socket.connect();
   console.log(socket.status())
 } catch (error) {
   console.error(error)
+}
+
+function onError( error ) {
+  console.error( error.message );
+  console.error( error.stack );
+  setTimeout( function reconnect() {
+    socket.connect();
+  }, 2000 );
 }
 
 function wait(time) {
@@ -69,17 +79,20 @@ function opentsdb_write(metric, successful, name, drift) {
       console.error(error)
     }
 
-    let value = '';
-    value += 'put ';
+    let value = 'put ';
     value += 'logs '
     value += Date.now();
+    value += ' 1'
     value += ' type=' + metric;
     value += ' succesful=' + successful;
     value += ' host=' + name;
     value += ' drift=' + drift;
+    value += '\n';
 
+    console.log(metric)
     socket.write(value, function ack() {
       try {
+        console.log("written")
         resolve('data written');
       } catch (e) {
         resolve('failed to write data')
@@ -199,7 +212,6 @@ async function begin_log_tests() {
     }
   }
 }
-
 
 async function begin_http_tests() {
   while(true) {
