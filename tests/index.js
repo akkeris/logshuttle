@@ -82,11 +82,10 @@ function opentsdb_write(metric, successful, name, drift) {
     let value = 'put ';
     value += 'logs '
     value += Date.now();
-    value += ' 1'
+    value += ' ' + drift;
     value += ' type=' + metric;
-    value += ' succesful=' + successful;
+    value += ' successful=' + successful;
     value += ' host=' + name;
-    value += ' drift=' + drift;
     value += '\n';
 
     console.log(metric)
