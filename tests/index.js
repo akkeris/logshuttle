@@ -1,11 +1,13 @@
 const http = require('http')
 const https = require('https')
+const opentsdb_socket = require('opentsdb-socket')
 const url = require('url')
 const system_name = process.env.ALAMO_APPLICATION
 const system_uri = process.env.URL
 console.assert(system_uri && system_uri !== "", 'No URL was provided.')
 const papertrail_token = process.env.PAPERTRAIL_TOKEN
 const influxdb = process.env.INFLUXDB
+const influxdb_port = process.env.INFLUXDB_PORT || 4242
 const port = process.env.PORT || 9000
 
 const timeout_on_search = parseInt(process.env.TIMEOUT_ON_SEARCH || '3600', 10)
@@ -19,6 +21,26 @@ console.assert(papertrail_token, 'The papertrial token was not found.')
 console.assert(influxdb, 'Influxdb was not found.')
 
 console.log("System:", system_name)
+
+var socket = opentsdb_socket();
+socket.host(influxdb);
+socket.port(influxdb_port);
+socket.on( 'error', onError );
+
+try {
+  socket.connect();
+  console.log(socket.status())
+} catch (error) {
+  console.error(error)
+}
+
+function onError( error ) {
+  console.error( error.message );
+  console.error( error.stack );
+  setTimeout( function reconnect() {
+    socket.connect();
+  }, 2000 );
+}
 
 function wait(time) {
   return new Promise((resolve, reject) => {
@@ -49,6 +71,35 @@ function fetch(uri, method, headers, data) {
   })
 }
 
+function opentsdb_write(metric, successful, name, drift) {
+  return new Promise((resolve, reject) => {
+    try {
+      console.log(socket.status())
+    } catch (error) {
+      console.error(error)
+    }
+
+    let value = 'put ';
+    value += 'logs '
+    value += Date.now();
+    value += ' ' + drift;
+    value += ' type=' + metric;
+    value += ' successful=' + successful;
+    value += ' host=' + name;
+    value += '\n';
+
+    console.log(metric)
+    socket.write(value, function ack() {
+      try {
+        console.log("written")
+        resolve('data written');
+      } catch (e) {
+        resolve('failed to write data')
+      }
+    })
+  })
+}
+
 async function record(name, metric, successful, drift, begin_date, end_date) {
   if(process.env.TEST_MODE) {
     console.log("=> write " + metric + ' successful=' + successful + ' host=' + name + " drift=" + drift)
@@ -56,7 +107,7 @@ async function record(name, metric, successful, drift, begin_date, end_date) {
     if(drift < 0) {
       drift = 0
     }
-    await fetch(influxdb + '/write?db=logmonitor&_http_tag=' + name, 'POST', {}, 'logs,type=' + metric + ',successful=' + successful + ',host=' + name + ' drift=' + drift)
+    await opentsdb_write(metric, successful, name, drift)
     await wait(100)
   }
 }
@@ -160,7 +211,6 @@ async function begin_log_tests() {
     }
   }
 }
-
 
 async function begin_http_tests() {
   while(true) {
