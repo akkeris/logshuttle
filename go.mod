@@ -8,7 +8,7 @@ require (
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 	github.com/gopherjs/gopherjs v0.0.0-20190309154008-847fc94819f9
 	github.com/jtolds/gls v4.20.0+incompatible
-	github.com/lib/pq v1.0.0
+	github.com/lib/pq v1.6.0
 	github.com/martini-contrib/binding v0.0.0-20160701174519-05d3e151b6cf
 	github.com/martini-contrib/render v0.0.0-20150707142108-ec18f8345a11
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d
