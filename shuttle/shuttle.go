@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"os"
 )
 
 // TODO: Connect on demand (but deal with bad hosts will be tricky)
@@ -83,6 +84,28 @@ func (sh *Shuttle) forwardIstioWebLogs() {
 	}
 }
 
+
+func (sh *Shuttle) forwardIstioWebLogsFromEnvoyAls() {
+	for e := range sh.consumer.IstioWebLogs {
+		var msg events.LogSpec
+		sh.received++
+		if err := ParseIstioFromEnvoyWebLogMessage(e.Value, &msg); err == true {
+			sh.failed_decode++
+		} else {
+			var orgLog = msg.Log
+			msg.Log = msg.Log + " host=" + msg.Kubernetes.ContainerName + "-" + msg.Topic + " path=" + msg.Path
+			sh.SendMessage(msg)
+			if msg.Site != "" {
+				msg.Log = orgLog + " host=" + msg.Site + " path=" + msg.SitePath
+				msg.Kubernetes.PodName = "akkeris/router"
+				msg.Kubernetes.ContainerName = msg.Site
+				msg.Topic = ""
+				sh.SendMessage(msg)
+			}
+		}
+	}
+}
+
 func (sh *Shuttle) forwardWebLogs() {
 	for e := range sh.consumer.WebLogs {
 		var msg events.LogSpec
@@ -138,8 +161,11 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 	go sh.forwardWebLogs()
 
 	// Start listening to istio web logs
-	go sh.forwardIstioWebLogs()
-
+	if os.Getenv("RUN_ISTIO_ALS") == "true" {
+		go sh.forwardIstioWebLogsFromEnvoyAls()
+	} else {
+		go sh.forwardIstioWebLogs()
+	}
 	// Start listening to build logs
 	go sh.forwardBuildLogs()
 	return nil

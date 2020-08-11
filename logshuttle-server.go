@@ -166,6 +166,13 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 	go StartHttpShuttleServices(client, logProducer, port)
 	t := time.NewTicker(time.Second * 60)
 
+	var envoyAlsAdapter *shuttle.EnvoyAlsServer = &shuttle.EnvoyAlsServer{}
+	if os.Getenv("RUN_ISTIO_ALS") == "true" {
+		if err := envoyAlsAdapter.StartEnvoyALSAdapter(9001, kafkaAddrs, kafkaGroup); err != nil {
+			log.Fatalf("Unable to start envoy acl adapter: %s\n", err.Error())
+		}
+	}
+
 	// we need to hear about interrupt signals to safely
 	// close the kafka channel, flush syslogs, etc..
 	sigchan := make(chan os.Signal, 1)
@@ -180,6 +187,10 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 		log.Println("[info] Closed consumer.")
 		drains.CloseAll()
 		log.Println("[info] Closed syslog drains.")
+		if os.Getenv("RUN_ISTIO_ALS") == "true" {
+			envoyAlsAdapter.Close()
+			log.Println("[info] Closed envoy als adapter.")
+		}
 		os.Exit(0)
 	}()
 	for {
