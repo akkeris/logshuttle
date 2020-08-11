@@ -35,11 +35,15 @@ func (s *EnvoyAlsServer) StreamAccessLogs(stream v2.AccessLogService_StreamAcces
 			log.Printf("Failed to recieve istio access logs: %s\n", err.Error())
 			return err
 		}
-		str, _ := s.marshaler.MarshalToString(in)
-		err = s.producer.AddRaw("istio-access-logs", str)
-		if err != nil {
-			log.Printf("Failed to send istio access logs to kafka: %s\n", err.Error())
-			return err
+		switch entries := in.LogEntries.(type) {
+		case *v2.StreamAccessLogsMessage_HttpLogs:
+			for _, entry := range entries.HttpLogs.LogEntry {
+				str, _ := s.marshaler.MarshalToString(entry)
+				if err := s.producer.AddRaw("istio-access-logs", str); err != nil {
+					log.Printf("Failed to send istio access logs to kafka: %s\n", err.Error())
+					return err
+				}
+			}
 		}
 	}
 }
