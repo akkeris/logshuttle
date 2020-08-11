@@ -32,10 +32,15 @@ func (s *EnvoyAlsServer) StreamAccessLogs(stream v2.AccessLogService_StreamAcces
 			return nil
 		}
 		if err != nil {
+			log.Printf("Failed to recieve istio access logs: %s\n", err.Error())
 			return err
 		}
 		str, _ := s.marshaler.MarshalToString(in)
-		return s.producer.AddRaw("istio-access-logs", str)
+		err = s.producer.AddRaw("istio-access-logs", str)
+		if err != nil {
+			log.Printf("Failed to send istio access logs to kafka: %s\n", err.Error())
+			return err
+		}
 	}
 }
 

@@ -85,11 +85,14 @@ func (sh *Shuttle) forwardIstioWebLogs() {
 }
 
 
-func (sh *Shuttle) forwardIstioWebLogsFromEnvoyAls() {
+func (sh *Shuttle) forwardIstioWebLogsFromEnvoyAls(debug bool) {
 	for e := range sh.consumer.IstioWebLogs {
 		var msg events.LogSpec
 		sh.received++
 		if err := ParseIstioFromEnvoyWebLogMessage(e.Value, &msg); err == true {
+			if debug == true {
+				log.Printf("Unable to decode message from kafka: %s\n", e.Value);
+			}
 			sh.failed_decode++
 		} else {
 			var orgLog = msg.Log
@@ -162,7 +165,11 @@ func (sh *Shuttle) Init(client *storage.Storage, kafkaAddrs []string, kafkaGroup
 
 	// Start listening to istio web logs
 	if os.Getenv("RUN_ISTIO_ALS") == "true" {
-		go sh.forwardIstioWebLogsFromEnvoyAls()
+		istioAlsDebug := false 
+		if os.Getenv("RUN_ISTIO_ALS_DEBUG") == "true" {
+			istioAlsDebug = true
+		}
+		go sh.forwardIstioWebLogsFromEnvoyAls(istioAlsDebug)
 	} else {
 		go sh.forwardIstioWebLogs()
 	}

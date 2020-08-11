@@ -33,6 +33,7 @@ http://user:pass@host:port/path/to?query=value, https://user:pass@host:port/path
 - **AUTH_KEY** - The authentication key to use, any requests without this will result in a 401 Unauthorized, the key should be passed in as the value to the "Authorzation" header (no need to add bearer or basic in the header)
 - **KAFKA_HOSTS** - The comma delimited list of hosts (and optionally port concatenated with a : proceeding the host, e.g., host:port) of the kafka instances (not the zookeepers), to connect to. 
 - **RUN_ISTIO_ALS** - If you're using istio v1.5+ set this to true and point your envoy access log service to `logshuttle.akkeris-system:9001`.
+- **RUN_ISTIO_ALS_DEBUG** - Set to `true` to debug ALS messages recieved from envoy.
 
 **Important Kafka Notes**: to ensure consistency in the order of log lines there MUST be as many logshuttle instances as there are partitions in kafka.
 
