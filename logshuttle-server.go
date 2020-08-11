@@ -168,9 +168,7 @@ func StartShuttleServices(client *storage.Storage, kafkaAddrs []string, port int
 
 	var envoyAlsAdapter *shuttle.EnvoyAlsServer = &shuttle.EnvoyAlsServer{}
 	if os.Getenv("RUN_ISTIO_ALS") == "true" {
-		if err := envoyAlsAdapter.StartEnvoyALSAdapter(9001, kafkaAddrs, kafkaGroup); err != nil {
-			log.Fatalf("Unable to start envoy acl adapter: %s\n", err.Error())
-		}
+		go envoyAlsAdapter.StartEnvoyALSAdapter(9001, logProducer)
 	}
 
 	// we need to hear about interrupt signals to safely
