@@ -20,7 +20,9 @@ type EnvoyAlsServer struct {
 var _ v2.AccessLogServiceServer = &EnvoyAlsServer{}
 
 func New(kafkaAddrs []string, kafkaGroup string, port string) (v2.AccessLogServiceServer, error) {
-	s := &EnvoyAlsServer{}
+	s := &EnvoyAlsServer{
+		producer: &events.LogProducer{},
+	}
 	err := s.producer.Init(kafkaAddrs, kafkaGroup)
 	if err != nil {
 		return s, err

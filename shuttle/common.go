@@ -60,7 +60,8 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 	if err := json.Unmarshal(data, &istioMsg); err != nil {
 		return true
 	}
-	if istioMsg.CommonProperties.UpstreamCluster == "" || 
+	if istioMsg.CommonProperties == nil ||
+		istioMsg.CommonProperties.UpstreamCluster == "" || 
 		istioMsg.Response.ResponseCode == nil || 
 		istioMsg.CommonProperties.TimeToLastUpstreamTxByte == nil || 
 		istioMsg.CommonProperties.TimeToLastRxByte == nil {
