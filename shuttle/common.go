@@ -3,6 +3,7 @@ package shuttle
 import (
 	"encoding/json"
 	"github.com/akkeris/logshuttle/events"
+	envoy "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v2"
 	"net/url"
 	"regexp"
 	"strings"
@@ -48,6 +49,63 @@ type buildLogSpec struct {
 	Build    int    `json:"build"`
 	Job      string `json:"job"`
 	Message  string `json:"message"`
+}
+
+func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
+	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L246
+	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L857
+	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L372
+
+	var istioMsg envoy.HTTPAccessLogEntry
+	if err := json.Unmarshal(data, &istioMsg); err != nil {
+		return true
+	}
+	if istioMsg.CommonProperties.UpstreamCluster == "" || 
+		istioMsg.Response.ResponseCode == nil || 
+		istioMsg.CommonProperties.TimeToLastUpstreamTxByte == nil || 
+		istioMsg.CommonProperties.TimeToLastRxByte == nil {
+		return true
+	}
+
+	c := strings.Split(istioMsg.CommonProperties.UpstreamCluster, "|")
+	d := strings.Split(c[3], ".")
+	app := d[0]
+	space := d[1]
+
+	var code uint32 = 0
+	if istioMsg.Response.ResponseCode != nil {
+		code = istioMsg.Response.ResponseCode.GetValue()
+	}
+
+	msg.Log = "bytes=" + strconv.Itoa(int(istioMsg.Request.RequestHeadersBytes + istioMsg.Request.RequestBodyBytes + istioMsg.Response.ResponseHeadersBytes + istioMsg.Response.ResponseBodyBytes)) + " " +
+		"request_size=" + strconv.Itoa(int(istioMsg.Request.RequestHeadersBytes + istioMsg.Request.RequestBodyBytes)) + " " +
+		"response_size=" + strconv.Itoa(int(istioMsg.Response.ResponseHeadersBytes + istioMsg.Response.ResponseBodyBytes)) + " " +
+		"method=" + string(istioMsg.Request.RequestMethod) + " " +
+		"request_id=" + istioMsg.Request.RequestId + " " +
+		"fwd=" + istioMsg.Request.ForwardedFor + " " +
+		"authority=" + istioMsg.Request.Authority + " " +
+		"status=" + strconv.Itoa(int(code)) + " " +
+		"service=" + istioMsg.CommonProperties.TimeToLastUpstreamTxByte.String() + " " +
+		"total=" +  istioMsg.CommonProperties.TimeToLastRxByte.String() + " " +
+		"dyno=" + app + "-" + space
+
+	msg.Stream = ""
+	msg.Time = time.Now()
+	msg.Space = space
+	msg.Site = "" // TODO
+	msg.SitePath = "" // TODO
+	msg.Path = istioMsg.Request.Path
+	msg.Kubernetes.NamespaceName = space
+	msg.Kubernetes.PodId = ""
+	msg.Kubernetes.PodName = "akkeris/router"
+	msg.Kubernetes.ContainerName = app
+	msg.Kubernetes.Labels.Name = ""
+	msg.Kubernetes.Labels.PodTemplateHash = ""
+	msg.Kubernetes.Host = ""
+	msg.Topic = space
+	msg.Tag = ""
+
+	return false
 }
 
 func ParseIstioWebLogMessage(data []byte, msg *events.LogSpec) bool {

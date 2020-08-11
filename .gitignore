@@ -2,3 +2,5 @@
 logshuttle
 *.env
 node_modules
+confluent-*
+librdkafka-*

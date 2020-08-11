@@ -96,6 +96,25 @@ func (ls *Session) RespondWithIstioWebLog(e *kafka.Message) error {
 	return nil
 }
 
+func (ls *Session) RespondWithIstioWebLogFromEnvoyAls(e *kafka.Message) error {
+	var msg events.LogSpec
+	if ParseIstioFromEnvoyWebLogMessage(e.Value, &msg) == false && ((IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space) || (msg.Site != "" && msg.Site == ls.site)) {
+		ls.loops = 0
+		if msg.Site == "" {
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + ls.app + "-" + ls.space + " akkeris/router: " + msg.Log + " host=" + msg.Kubernetes.ContainerName + " path=" + msg.Path + "\n"
+			if err := WriteAndFlush(log, ls.response); err != nil {
+				return err
+			}
+		} else {
+			log := msg.Time.UTC().Format(time.RFC3339) + " " + msg.Site + " akkeris/router: " + msg.Log + " host=" + msg.Site + " path=" + msg.SitePath + "\n"
+			if err := WriteAndFlush(log, ls.response); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (ls *Session) RespondWithWebLog(e *kafka.Message) error {
 	var msg events.LogSpec
 	if ParseWebLogMessage(e.Value, &msg) == false && ((IsAppMatch(msg.Kubernetes.ContainerName, ls.app) && msg.Topic == ls.space) || (msg.Site != "" && msg.Site == ls.site)) {
@@ -146,6 +165,11 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 	debug := false 
 	if os.Getenv("DEBUG_SESSION") == "true" {
 		debug = true
+	}
+
+	useEnvoyAls := false
+	if os.Getenv("RUN_ISTIO_ALS") == "true" {
+		useEnvoyAls = true
 	}
 
 	consumer := events.CreateConsumerCluster(kafkaAddrs, ls.group)
@@ -201,8 +225,16 @@ func (ls *Session) ConsumeAndRespond(kafkaAddrs []string, app string, space stri
 					ls.IsOpen = false
 					break
 				}
-			} else if *e.TopicPartition.Topic == "istio-access-logs" {
+			} else if !useEnvoyAls && *e.TopicPartition.Topic == "istio-access-logs" {
 				if err := ls.RespondWithIstioWebLog(e); err != nil {
+					if debug {
+						log.Printf("[debug] write and flush failed in istio app logs [%s] %s[group: %s]\n", err.Error(), subject, ls.group)
+					}
+					ls.IsOpen = false
+					break
+				}
+			} else if useEnvoyAls && *e.TopicPartition.Topic == "istio-access-logs" {
+				if err := ls.RespondWithIstioWebLogFromEnvoyAls(e); err != nil {
 					if debug {
 						log.Printf("[debug] write and flush failed in istio app logs [%s] %s[group: %s]\n", err.Error(), subject, ls.group)
 					}

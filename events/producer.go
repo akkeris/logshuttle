@@ -73,10 +73,19 @@ func (lc *LogProducer) AddLog(message LogSpec) error {
 	}, nil)
 }
 
-func (lc *LogProducer) Init(kafkaAddrs []string, kafkaGroup string) {
+
+func (lc *LogProducer) AddRaw(topic string, message string) error {
+	return lc.producer.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Value:          []byte(message),
+		Headers:        []kafka.Header{},
+	}, nil)
+}
+
+func (lc *LogProducer) Init(kafkaAddrs []string, kafkaGroup string) error {
 	lc.address = kafkaAddrs
 	lc.group = kafkaGroup
-	lc.Open()
+	return lc.Open()
 }
 
 func (lc *LogProducer) Open() error {
