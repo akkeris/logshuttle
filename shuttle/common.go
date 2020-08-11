@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 	"strconv"
-	"log"
-	"os"
 )
 
 func ContainerToProc(container string) events.Process {
@@ -66,9 +64,7 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 		istioMsg.CommonProperties.UpstreamCluster == "" || 
 		istioMsg.Response.ResponseCode == nil || 
 		istioMsg.CommonProperties.TimeToLastUpstreamTxByte == nil || 
-		istioMsg.CommonProperties.TimeToLastRxByte == nil 
-	{
-		log.Printf()
+		istioMsg.CommonProperties.TimeToLastRxByte == nil {
 		return true
 	}
 
