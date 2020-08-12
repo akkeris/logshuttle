@@ -3,10 +3,10 @@ package shuttle
 import (
 	"encoding/json"
 	"github.com/akkeris/logshuttle/events"
-	envoy "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v2"
 	"net/url"
 	"regexp"
 	"strings"
+	duration "github.com/golang/protobuf/ptypes/duration"
 	"time"
 	"strconv"
 )
@@ -43,6 +43,54 @@ type istioLogSpec struct {
 	Dyno      string    `json:"dyno"`
 	Total     string    `json:"total"`
 }
+type ResponseFlags struct {
+	FailedLocalHealthcheck          bool                        `json:"failed_local_healthcheck,omitempty"`
+	NoHealthyUpstream               bool                        `json:"no_healthy_upstream,omitempty"`
+	UpstreamRequestTimeout          bool                        `json:"upstream_request_timeout,omitempty"`
+	LocalReset                      bool                        `json:"local_reset,omitempty"`
+	UpstreamRemoteReset             bool                        `json:"upstream_remote_reset,omitempty"`
+	UpstreamConnectionFailure       bool                        `json:"upstream_connection_failure,omitempty"`
+	UpstreamConnectionTermination   bool                        `json:"upstream_connection_termination,omitempty"`
+	UpstreamOverflow                bool                        `json:"upstream_overflow,omitempty"`
+	NoRouteFound                    bool                        `json:"no_route_found,omitempty"`
+	DelayInjected                   bool                        `json:"delay_injected,omitempty"`
+	FaultInjected                   bool                        `json:"fault_injected,omitempty"`
+	RateLimited                     bool                        `json:"rate_limited,omitempty"`
+	RateLimitServiceError           bool                        `json:"rate_limit_service_error,omitempty"`
+	DownstreamConnectionTermination bool                        `json:"downstream_connection_termination,omitempty"`
+	UpstreamRetryLimitExceeded      bool                        `json:"upstream_retry_limit_exceeded,omitempty"`
+	StreamIdleTimeout               bool                        `json:"stream_idle_timeout,omitempty"`
+	InvalidEnvoyRequestHeaders      bool                        `json:"invalid_envoy_request_headers,omitempty"`
+	DownstreamProtocolError         bool                        `json:"downstream_protocol_error,omitempty"`
+}
+type CommonProperties struct {
+	StartTime	*time.Time 	`json:"start_time"`
+	TimeToLastUpstreamTxByte	*duration.Duration 	`json:"time_to_last_upstream_tx_byte"`
+	TimeToLastRxByte 			*duration.Duration 	`json:"time_to_last_rx_byte"`
+	UpstreamCluster	string `json:"upstream_cluster"`
+	ResponseFlags *ResponseFlags `json:"response_flags,omitempty"`
+}
+type Request struct {
+	RequestMethod string `json:"request_method"`
+	Authority string `json:"authority"`
+	Path string `json:"path"`
+	UserAgent string `json:"user_agent"`
+	ForwardedFor string `json:"forwarded_for"`
+	RequestId string `json:"request_id"`
+	RequestHeadersBytes uint64 `json:"request_headers_bytes"`
+	RequestBodyBytes uint64 `json:"request_body_bytes,omitempty"`
+}
+type Response struct {
+	ResponseCode *uint32 `json:"response_code"`
+	ResponseHeadersBytes uint64 `json:"response_headers_bytes"`
+	ResponseBodyBytes uint64 `json:"response_body_bytes,omitempty"`
+}
+type istio16LogSpec struct {
+	CommonProperties *CommonProperties `json:"common_properties"`
+	ProtocolVersion string `json:"protocol_version"`
+	Request *Request  `json:"request"`
+	Response *Response `json:"response"`
+}
 
 type buildLogSpec struct {
 	Metadata string `json:"metadata"`
@@ -56,12 +104,14 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L857
 	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L372
 
-	var istioMsg envoy.HTTPAccessLogEntry
+	var istioMsg istio16LogSpec
 	if err := json.Unmarshal(data, &istioMsg); err != nil {
 		return true
 	}
 	if istioMsg.CommonProperties == nil ||
 		istioMsg.CommonProperties.UpstreamCluster == "" || 
+		istioMsg.Response == nil ||
+		istioMsg.Request == nil ||
 		istioMsg.Response.ResponseCode == nil || 
 		istioMsg.CommonProperties.TimeToLastUpstreamTxByte == nil || 
 		istioMsg.CommonProperties.TimeToLastRxByte == nil {
@@ -75,7 +125,7 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 
 	var code uint32 = 0
 	if istioMsg.Response.ResponseCode != nil {
-		code = istioMsg.Response.ResponseCode.GetValue()
+		code = *istioMsg.Response.ResponseCode
 	}
 
 	msg.Log = "bytes=" + strconv.Itoa(int(istioMsg.Request.RequestHeadersBytes + istioMsg.Request.RequestBodyBytes + istioMsg.Response.ResponseHeadersBytes + istioMsg.Response.ResponseBodyBytes)) + " " +
