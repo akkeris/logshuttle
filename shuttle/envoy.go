@@ -25,6 +25,7 @@ func (s *EnvoyAlsServer) Close() {
 }
 
 func (s *EnvoyAlsServer) StreamAccessLogs(stream v2.AccessLogService_StreamAccessLogsServer) error {
+	s.marshaler.OrigName = true
 	log.Println("Started envoy access log stream")
 	for {
 		in, err := stream.Recv()
