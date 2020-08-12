@@ -1,11 +1,11 @@
 package main
 
 import (
+	"github.com/akkeris/logshuttle/storage"
 	"github.com/go-martini/martini"
 	"github.com/martini-contrib/render"
 	"github.com/stackimpact/stackimpact-go"
 	"log"
-	"github.com/akkeris/logshuttle/storage"
 	"math/rand"
 	"net/http"
 	"net/http/pprof"
