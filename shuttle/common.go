@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	duration "github.com/golang/protobuf/ptypes/duration"
 	"time"
 	"strconv"
 )
@@ -43,6 +42,7 @@ type istioLogSpec struct {
 	Dyno      string    `json:"dyno"`
 	Total     string    `json:"total"`
 }
+
 type ResponseFlags struct {
 	FailedLocalHealthcheck          bool                        `json:"failed_local_healthcheck,omitempty"`
 	NoHealthyUpstream               bool                        `json:"no_healthy_upstream,omitempty"`
@@ -65,8 +65,8 @@ type ResponseFlags struct {
 }
 type CommonProperties struct {
 	StartTime	*time.Time 	`json:"start_time"`
-	TimeToLastUpstreamTxByte	*duration.Duration 	`json:"time_to_last_upstream_tx_byte"`
-	TimeToLastRxByte 			*duration.Duration 	`json:"time_to_last_rx_byte"`
+	TimeToLastUpstreamTxByte	*string 	`json:"time_to_last_upstream_tx_byte"`
+	TimeToLastRxByte 			*string 	`json:"time_to_last_rx_byte"`
 	UpstreamCluster	string `json:"upstream_cluster"`
 	ResponseFlags *ResponseFlags `json:"response_flags,omitempty"`
 }
@@ -77,13 +77,13 @@ type Request struct {
 	UserAgent string `json:"user_agent"`
 	ForwardedFor string `json:"forwarded_for"`
 	RequestId string `json:"request_id"`
-	RequestHeadersBytes uint64 `json:"request_headers_bytes"`
-	RequestBodyBytes uint64 `json:"request_body_bytes,omitempty"`
+	RequestHeadersBytes string `json:"request_headers_bytes"`
+	RequestBodyBytes *string `json:"request_body_bytes,omitempty"`
 }
 type Response struct {
 	ResponseCode *uint32 `json:"response_code"`
-	ResponseHeadersBytes uint64 `json:"response_headers_bytes"`
-	ResponseBodyBytes uint64 `json:"response_body_bytes,omitempty"`
+	ResponseHeadersBytes string `json:"response_headers_bytes"`
+	ResponseBodyBytes *string `json:"response_body_bytes,omitempty"`
 }
 type istio16LogSpec struct {
 	CommonProperties *CommonProperties `json:"common_properties"`
@@ -99,6 +99,16 @@ type buildLogSpec struct {
 	Message  string `json:"message"`
 }
 
+func StringToIntOrZero(target *string) int {
+	if target == nil {
+		return 0
+	}
+	val, err := strconv.Atoi(*target)
+	if err != nil {
+		return 0
+	}
+	return val
+}
 func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L246
 	//https://github.com/envoyproxy/go-control-plane/blob/master/envoy/data/accesslog/v2/accesslog.pb.go#L857
@@ -118,26 +128,22 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 		return true
 	}
 
+
+
 	c := strings.Split(istioMsg.CommonProperties.UpstreamCluster, "|")
 	d := strings.Split(c[3], ".")
 	app := d[0]
 	space := d[1]
-
-	var code uint32 = 0
-	if istioMsg.Response.ResponseCode != nil {
-		code = *istioMsg.Response.ResponseCode
-	}
-
-	msg.Log = "bytes=" + strconv.Itoa(int(istioMsg.Request.RequestHeadersBytes + istioMsg.Request.RequestBodyBytes + istioMsg.Response.ResponseHeadersBytes + istioMsg.Response.ResponseBodyBytes)) + " " +
-		"request_size=" + strconv.Itoa(int(istioMsg.Request.RequestHeadersBytes + istioMsg.Request.RequestBodyBytes)) + " " +
-		"response_size=" + strconv.Itoa(int(istioMsg.Response.ResponseHeadersBytes + istioMsg.Response.ResponseBodyBytes)) + " " +
+	msg.Log = "bytes=" + strconv.Itoa(int(StringToIntOrZero(&istioMsg.Request.RequestHeadersBytes) + StringToIntOrZero(istioMsg.Request.RequestBodyBytes) + StringToIntOrZero(&istioMsg.Response.ResponseHeadersBytes) + StringToIntOrZero(istioMsg.Response.ResponseBodyBytes))) + " " +
+		"request_size=" + strconv.Itoa(int(StringToIntOrZero(&istioMsg.Request.RequestHeadersBytes) + StringToIntOrZero(istioMsg.Request.RequestBodyBytes))) + " " +
+		"response_size=" + strconv.Itoa(int(StringToIntOrZero(&istioMsg.Response.ResponseHeadersBytes) + StringToIntOrZero(istioMsg.Response.ResponseBodyBytes))) + " " +
 		"method=" + string(istioMsg.Request.RequestMethod) + " " +
 		"request_id=" + istioMsg.Request.RequestId + " " +
 		"fwd=" + istioMsg.Request.ForwardedFor + " " +
 		"authority=" + istioMsg.Request.Authority + " " +
-		"status=" + strconv.Itoa(int(code)) + " " +
-		"service=" + istioMsg.CommonProperties.TimeToLastUpstreamTxByte.String() + " " +
-		"total=" +  istioMsg.CommonProperties.TimeToLastRxByte.String() + " " +
+		"status=" + strconv.Itoa(int(*istioMsg.Response.ResponseCode)) + " " +
+		"service=" + *istioMsg.CommonProperties.TimeToLastUpstreamTxByte + " " +
+		"total=" +  *istioMsg.CommonProperties.TimeToLastRxByte + " " +
 		"dyno=" + app + "-" + space
 
 	msg.Stream = ""
