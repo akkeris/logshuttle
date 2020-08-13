@@ -63,12 +63,17 @@ type ResponseFlags struct {
 	InvalidEnvoyRequestHeaders      bool                        `json:"invalid_envoy_request_headers,omitempty"`
 	DownstreamProtocolError         bool                        `json:"downstream_protocol_error,omitempty"`
 }
+type TLSProperties struct {
+	TLSVersion *string `json:"tls_version,omitempty"`
+	TLSSNIHostname *string `json:"tls_sni_hostname,omitempty"`
+}
 type CommonProperties struct {
 	StartTime	*time.Time 	`json:"start_time"`
 	TimeToLastUpstreamTxByte	*string 	`json:"time_to_last_upstream_tx_byte"`
 	TimeToLastRxByte 			*string 	`json:"time_to_last_rx_byte"`
 	UpstreamCluster	string `json:"upstream_cluster"`
 	ResponseFlags *ResponseFlags `json:"response_flags,omitempty"`
+	TLSProperties *TLSProperties `json:"tls_properties,omitempty"`
 }
 type Request struct {
 	RequestMethod string `json:"request_method"`
@@ -77,6 +82,7 @@ type Request struct {
 	UserAgent string `json:"user_agent"`
 	ForwardedFor string `json:"forwarded_for"`
 	RequestId string `json:"request_id"`
+	OriginalPath string `json:"original_path,omitempty"`
 	RequestHeadersBytes string `json:"request_headers_bytes"`
 	RequestBodyBytes *string `json:"request_body_bytes,omitempty"`
 }
@@ -128,6 +134,23 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 		return true
 	}
 
+	var code int = 0
+    if istioMsg.CommonProperties.ResponseFlags != nil && istioMsg.CommonProperties.ResponseFlags.DownstreamConnectionTermination {
+		code = 499
+	}
+	if istioMsg.Response.ResponseCode != nil {
+		code = int(*istioMsg.Response.ResponseCode)
+	}
+
+	var tlsVersion string = ""
+	if istioMsg.CommonProperties.TLSProperties != nil && istioMsg.CommonProperties.TLSProperties.TLSVersion != nil {
+		tlsVersion = *istioMsg.CommonProperties.TLSProperties.TLSVersion
+	}
+
+	var tlsSNIHostname string = ""
+	if istioMsg.CommonProperties.TLSProperties != nil && istioMsg.CommonProperties.TLSProperties.TLSSNIHostname != nil {
+		tlsSNIHostname = "https://" + (*istioMsg.CommonProperties.TLSProperties.TLSSNIHostname) + istioMsg.Request.OriginalPath
+	}
 
 
 	c := strings.Split(istioMsg.CommonProperties.UpstreamCluster, "|")
@@ -141,7 +164,10 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 		"request_id=" + istioMsg.Request.RequestId + " " +
 		"fwd=" + istioMsg.Request.ForwardedFor + " " +
 		"authority=" + istioMsg.Request.Authority + " " +
-		"status=" + strconv.Itoa(int(*istioMsg.Response.ResponseCode)) + " " +
+		"origin=" + tlsSNIHostname + " " +
+		"protocol=" + strings.ToLower(istioMsg.ProtocolVersion) + " " +
+		"tls=" + tlsVersion + " " +
+		"status=" + strconv.Itoa(code) + " " +
 		"service=" + *istioMsg.CommonProperties.TimeToLastUpstreamTxByte + " " +
 		"total=" +  *istioMsg.CommonProperties.TimeToLastRxByte + " " +
 		"dyno=" + app + "-" + space
