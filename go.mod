@@ -18,7 +18,7 @@ require (
 	github.com/smartystreets/assertions v0.0.0-20180301161246-7678a5452ebe
 	github.com/smartystreets/goconvey v0.0.0-20170602164621-9e8dc3f972df
 	github.com/stackimpact/stackimpact-go v2.3.10+incompatible
-	google.golang.org/grpc v1.31.0
+	google.golang.org/grpc v1.31.1
 	gopkg.in/bsm/ratelimit.v1 v1.0.0-20160220154919-db14e161995a
 	gopkg.in/redis.v4 v4.2.4
 )
