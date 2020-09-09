@@ -9,6 +9,7 @@ import (
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
+	"net/http/pprof"
 	"log"
 	"net/http"
 	"os"
@@ -218,7 +219,7 @@ func StartHttpShuttleServices(client *storage.Storage, producer events.LogProduc
 	log.Println("[info] Starting logshuttle...")
 	m := martini.Classic()
 	m.Use(func(res http.ResponseWriter, req *http.Request) {
-		if req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && req.URL.Path != "/octhc" {
+		if req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && req.URL.Path != "/octhc" && !strings.Contains(req.URL.Path, "/debug") {
 			res.WriteHeader(http.StatusUnauthorized)
 		}
 	})
@@ -236,5 +237,19 @@ func StartHttpShuttleServices(client *storage.Storage, producer events.LogProduc
 	m.Get("/octhc", HealthCheck(client))
 	// Private end point to create new events within the log stream that are controller-api specifc.
 	m.Post("/log-events", binding.Json(events.LogSpec{}), CreateLogEvent(producer))
+
+	if os.Getenv("PROFILE") != "" {
+		m.Group("/debug/pprof", func(r martini.Router) {
+			r.Any("/", http.HandlerFunc(pprof.Index))
+			r.Any("/cmdline", http.HandlerFunc(pprof.Cmdline))
+			r.Any("/profile", http.HandlerFunc(pprof.Profile))
+			r.Any("/symbol", http.HandlerFunc(pprof.Symbol))
+			r.Any("/trace", http.HandlerFunc(pprof.Trace))
+			r.Any("/heap", pprof.Handler("heap").ServeHTTP)
+			r.Any("/block", pprof.Handler("block").ServeHTTP)
+			r.Any("/goroutine", pprof.Handler("goroutine").ServeHTTP)
+			r.Any("/mutex", pprof.Handler("mutex").ServeHTTP)
+		})
+	}
 	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
 }

@@ -4,11 +4,9 @@ import (
 	"github.com/akkeris/logshuttle/storage"
 	"github.com/go-martini/martini"
 	"github.com/martini-contrib/render"
-	"github.com/stackimpact/stackimpact-go"
 	"log"
 	"math/rand"
 	"net/http"
-	"net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -51,12 +49,7 @@ func main() {
 		// can sometimes take a very long time. Seems odd, but helps.
 		time.Sleep(time.Duration(rand.Intn(30)) * time.Second)
 	}
-	if os.Getenv("STACKIMPACT") != "" {
-		stackimpact.Start(stackimpact.Options{
-			AgentKey: os.Getenv("STACKIMPACT"),
-			AppName:  "Logshuttle",
-		})
-	}
+	
 
 	// Connect to storage instance
 	var s storage.Storage
@@ -81,17 +74,6 @@ func main() {
 
 	if err != nil {
 		port = 5000
-	}
-
-	if os.Getenv("PROFILE") != "" {
-		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
-			http.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
-			http.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-			http.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-			http.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-			http.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-		}()
 	}
 
 	if os.Getenv("RUN_SESSION") != "" {
