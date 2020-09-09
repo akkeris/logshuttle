@@ -7,6 +7,7 @@ import (
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http/pprof"
 	"net/http"
@@ -54,7 +55,7 @@ func StartSessionServices(client *storage.Storage, kafkaAddrs []string, port int
 	log.Println("[info] Starting logsession...")
 	m := martini.Classic()
 	m.Use(func(res http.ResponseWriter, req *http.Request) {
-		if req.Method == "POST" && req.URL.Path == "/log-sessions" && req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && !strings.Contains(req.URL.Path, "/debug") {
+		if req.Method == "POST" && req.URL.Path == "/log-sessions" && req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && !strings.Contains(req.URL.Path, "/debug") && req.URL.Path != "/metrics" {
 			res.WriteHeader(http.StatusUnauthorized)
 		}
 	})
@@ -75,6 +76,7 @@ func StartSessionServices(client *storage.Storage, kafkaAddrs []string, port int
 			r.Any("/goroutine", pprof.Handler("goroutine").ServeHTTP)
 			r.Any("/mutex", pprof.Handler("mutex").ServeHTTP)
 		})
+		m.Any("/metrics", promhttp.Handler().ServeHTTP)
 	}
 	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
 }

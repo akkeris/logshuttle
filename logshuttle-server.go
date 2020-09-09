@@ -9,6 +9,7 @@ import (
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http/pprof"
 	"log"
 	"net/http"
@@ -219,7 +220,7 @@ func StartHttpShuttleServices(client *storage.Storage, producer events.LogProduc
 	log.Println("[info] Starting logshuttle...")
 	m := martini.Classic()
 	m.Use(func(res http.ResponseWriter, req *http.Request) {
-		if req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && req.URL.Path != "/octhc" && !strings.Contains(req.URL.Path, "/debug") {
+		if req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && req.URL.Path != "/octhc" && !strings.Contains(req.URL.Path, "/debug") && req.URL.Path != "/metrics" {
 			res.WriteHeader(http.StatusUnauthorized)
 		}
 	})
@@ -250,6 +251,7 @@ func StartHttpShuttleServices(client *storage.Storage, producer events.LogProduc
 			r.Any("/goroutine", pprof.Handler("goroutine").ServeHTTP)
 			r.Any("/mutex", pprof.Handler("mutex").ServeHTTP)
 		})
+		m.Any("/metrics", promhttp.Handler().ServeHTTP)
 	}
 	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
 }
