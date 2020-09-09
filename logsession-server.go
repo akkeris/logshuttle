@@ -7,10 +7,13 @@ import (
 	"github.com/martini-contrib/binding"
 	"github.com/martini-contrib/render"
 	"github.com/nu7hatch/gouuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
+	"net/http/pprof"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -52,7 +55,7 @@ func StartSessionServices(client *storage.Storage, kafkaAddrs []string, port int
 	log.Println("[info] Starting logsession...")
 	m := martini.Classic()
 	m.Use(func(res http.ResponseWriter, req *http.Request) {
-		if req.Method == "POST" && req.URL.Path == "/log-sessions" && req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") {
+		if req.Method == "POST" && req.URL.Path == "/log-sessions" && req.Header.Get("Authorization") != os.Getenv("AUTH_KEY") && !strings.Contains(req.URL.Path, "/debug") && req.URL.Path != "/metrics" {
 			res.WriteHeader(http.StatusUnauthorized)
 		}
 	})
@@ -61,5 +64,19 @@ func StartSessionServices(client *storage.Storage, kafkaAddrs []string, port int
 	m.Post("/log-sessions", binding.Json(storage.LogSession{}), CreateLogSession(client))
 	m.Get("/log-sessions/:id", ReadLogSession(client, kafkaAddrs))
 	m.Get("/octhc", HealthCheck(client))
+	if os.Getenv("PROFILE") != "" {
+		m.Group("/debug/pprof", func(r martini.Router) {
+			r.Any("/", http.HandlerFunc(pprof.Index))
+			r.Any("/cmdline", http.HandlerFunc(pprof.Cmdline))
+			r.Any("/profile", http.HandlerFunc(pprof.Profile))
+			r.Any("/symbol", http.HandlerFunc(pprof.Symbol))
+			r.Any("/trace", http.HandlerFunc(pprof.Trace))
+			r.Any("/heap", pprof.Handler("heap").ServeHTTP)
+			r.Any("/block", pprof.Handler("block").ServeHTTP)
+			r.Any("/goroutine", pprof.Handler("goroutine").ServeHTTP)
+			r.Any("/mutex", pprof.Handler("mutex").ServeHTTP)
+		})
+		m.Any("/metrics", promhttp.Handler().ServeHTTP)
+	}
 	m.RunOnAddr(":" + strconv.FormatInt(int64(port), 10))
 }
