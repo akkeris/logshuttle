@@ -47,6 +47,7 @@ func CreateProducer(kafkaAddrs []string, kafkaGroup string) *kafka.Producer {
 		"bootstrap.servers":  strings.Join(kafkaAddrs, ","),
 		"group.id":           kafkaGroup,
 		"session.timeout.ms": 6000,
+		"go.delivery.reports": false,
 	})
 	if err != nil {
 		log.Fatal(err)
