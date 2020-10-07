@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"strconv"
+	"fmt"
 )
 
 func ContainerToProc(container string) events.Process {
@@ -69,8 +70,13 @@ type TLSProperties struct {
 }
 type CommonProperties struct {
 	StartTime	*time.Time 	`json:"start_time"`
-	TimeToLastUpstreamTxByte	*string 	`json:"time_to_last_upstream_tx_byte"`
-	TimeToLastRxByte 			*string 	`json:"time_to_last_rx_byte"`
+	TimeToLastRxByte 					*time.Duration 	`json:"time_to_last_rx_byte"`
+	TimeToFirstUpstreamTxByte 			*time.Duration 	`json:"time_to_first_upstream_tx_byte"`
+	TimeToLastUpstreamTxByte 			*time.Duration 	`json:"time_to_last_upstream_tx_byte"`
+	TimeToFirstUpstreamRxByte 			*time.Duration 	`json:"time_to_first_upstream_rx_byte"`
+	TimeToLastUpstreamRxByte 			*time.Duration 	`json:"time_to_last_upstream_rx_byte"`
+	TimeToFirstDownstreamTxByte			*time.Duration 	`json:"time_to_first_downstream_tx_byte"`
+	TimeToLastDownstreamTxByte 			*time.Duration 	`json:"time_to_last_downstream_tx_byte"`
 	UpstreamCluster	string `json:"upstream_cluster"`
 	ResponseFlags *ResponseFlags `json:"response_flags,omitempty"`
 	TLSProperties *TLSProperties `json:"tls_properties,omitempty"`
@@ -168,8 +174,9 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 		"protocol=" + strings.ToLower(istioMsg.ProtocolVersion) + " " +
 		"tls=" + tlsVersion + " " +
 		"status=" + strconv.Itoa(code) + " " +
-		"service=" + *istioMsg.CommonProperties.TimeToLastUpstreamTxByte + " " +
-		"total=" +  *istioMsg.CommonProperties.TimeToLastRxByte + " " +
+		"connect=" + fmt.Sprintf("%.2fms", ((*istioMsg.CommonProperties.TimeToLastUpstreamTxByte).Seconds() * 1000)) + " " +
+		"service=" + fmt.Sprintf("%.2fms", ((*istioMsg.CommonProperties.TimeToLastUpstreamRxByte).Seconds() * 1000)) + " " +
+		"total=" +  fmt.Sprintf("%.2fms", ((*istioMsg.CommonProperties.TimeToLastDownstreamTxByte).Seconds() * 1000)) + " " +
 		"dyno=" + app + "-" + space
 
 	msg.Stream = ""
