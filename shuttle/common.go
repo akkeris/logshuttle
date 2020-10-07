@@ -9,7 +9,41 @@ import (
 	"time"
 	"strconv"
 	"fmt"
+	"errors"
 )
+
+type Duration struct {
+    time.Duration
+}
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+    return json.Marshal(d.String())
+}
+
+func (d *Duration) UnmarshalJSON(b []byte) error {
+    var v interface{}
+    if err := json.Unmarshal(b, &v); err != nil {
+        return err
+    }
+    switch value := v.(type) {
+    case float64:
+        d.Duration = time.Duration(value)
+        return nil
+    case string:
+        var err error
+        d.Duration, err = time.ParseDuration(value)
+        if err != nil {
+            return err
+        }
+        return nil
+    default:
+        return errors.New("invalid duration")
+    }
+}
+
+func (d *Duration) StringMilliseconds() string {
+	return fmt.Sprintf("%.2fms", d.Seconds() * 1000)
+}
 
 func ContainerToProc(container string) events.Process {
 	proc := events.Process{App: container, Type: "web"}
@@ -70,13 +104,13 @@ type TLSProperties struct {
 }
 type CommonProperties struct {
 	StartTime	*time.Time 	`json:"start_time"`
-	TimeToLastRxByte 					*time.Duration 	`json:"time_to_last_rx_byte"`
-	TimeToFirstUpstreamTxByte 			*time.Duration 	`json:"time_to_first_upstream_tx_byte"`
-	TimeToLastUpstreamTxByte 			*time.Duration 	`json:"time_to_last_upstream_tx_byte"`
-	TimeToFirstUpstreamRxByte 			*time.Duration 	`json:"time_to_first_upstream_rx_byte"`
-	TimeToLastUpstreamRxByte 			*time.Duration 	`json:"time_to_last_upstream_rx_byte"`
-	TimeToFirstDownstreamTxByte			*time.Duration 	`json:"time_to_first_downstream_tx_byte"`
-	TimeToLastDownstreamTxByte 			*time.Duration 	`json:"time_to_last_downstream_tx_byte"`
+	TimeToLastRxByte 					*Duration 	`json:"time_to_last_rx_byte"`
+	TimeToFirstUpstreamTxByte 			*Duration 	`json:"time_to_first_upstream_tx_byte"`
+	TimeToLastUpstreamTxByte 			*Duration 	`json:"time_to_last_upstream_tx_byte"`
+	TimeToFirstUpstreamRxByte 			*Duration 	`json:"time_to_first_upstream_rx_byte"`
+	TimeToLastUpstreamRxByte 			*Duration 	`json:"time_to_last_upstream_rx_byte"`
+	TimeToFirstDownstreamTxByte			*Duration 	`json:"time_to_first_downstream_tx_byte"`
+	TimeToLastDownstreamTxByte 			*Duration 	`json:"time_to_last_downstream_tx_byte"`
 	UpstreamCluster	string `json:"upstream_cluster"`
 	ResponseFlags *ResponseFlags `json:"response_flags,omitempty"`
 	TLSProperties *TLSProperties `json:"tls_properties,omitempty"`
@@ -174,9 +208,9 @@ func ParseIstioFromEnvoyWebLogMessage(data []byte, msg *events.LogSpec) bool {
 		"protocol=" + strings.ToLower(istioMsg.ProtocolVersion) + " " +
 		"tls=" + tlsVersion + " " +
 		"status=" + strconv.Itoa(code) + " " +
-		"connect=" + fmt.Sprintf("%.2fms", ((*istioMsg.CommonProperties.TimeToLastUpstreamTxByte).Seconds() * 1000)) + " " +
-		"service=" + fmt.Sprintf("%.2fms", ((*istioMsg.CommonProperties.TimeToLastUpstreamRxByte).Seconds() * 1000)) + " " +
-		"total=" +  fmt.Sprintf("%.2fms", ((*istioMsg.CommonProperties.TimeToLastDownstreamTxByte).Seconds() * 1000)) + " " +
+		"connect=" + (*istioMsg.CommonProperties.TimeToLastUpstreamTxByte).StringMilliseconds() + " " +
+		"service=" + (*istioMsg.CommonProperties.TimeToLastUpstreamRxByte).StringMilliseconds() + " " +
+		"total=" +  (*istioMsg.CommonProperties.TimeToLastDownstreamTxByte).StringMilliseconds() + " " +
 		"dyno=" + app + "-" + space
 
 	msg.Stream = ""
