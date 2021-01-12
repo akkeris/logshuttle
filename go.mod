@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 // indirect
 	github.com/confluentinc/confluent-kafka-go v1.1.0
-	github.com/envoyproxy/go-control-plane v0.9.6
+	github.com/envoyproxy/go-control-plane v0.9.7
 	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 	github.com/golang/protobuf v1.4.2
@@ -21,7 +21,7 @@ require (
 	github.com/smartystreets/assertions v0.0.0-20180301161246-7678a5452ebe
 	github.com/smartystreets/goconvey v0.0.0-20170602164621-9e8dc3f972df
 	github.com/stackimpact/stackimpact-go v2.3.10+incompatible
-	google.golang.org/grpc v1.31.0
+	google.golang.org/grpc v1.34.1
 	gopkg.in/bsm/ratelimit.v1 v1.0.0-20160220154919-db14e161995a
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/redis.v4 v4.2.4
