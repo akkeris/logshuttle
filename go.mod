@@ -8,7 +8,7 @@ require (
 	github.com/envoyproxy/go-control-plane v0.9.6
 	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
-	github.com/golang/protobuf v1.4.2
+	github.com/golang/protobuf v1.4.3
 	github.com/google/gops v0.3.12 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190309154008-847fc94819f9
 	github.com/jtolds/gls v4.20.0+incompatible
@@ -17,9 +17,9 @@ require (
 	github.com/martini-contrib/render v0.0.0-20150707142108-ec18f8345a11
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
-	github.com/prometheus/client_golang v1.7.1
-	github.com/smartystreets/assertions v0.0.0-20180301161246-7678a5452ebe
-	github.com/smartystreets/goconvey v0.0.0-20170602164621-9e8dc3f972df
+	github.com/prometheus/client_golang v1.9.0
+	github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d
+	github.com/smartystreets/goconvey v1.6.4
 	github.com/stackimpact/stackimpact-go v2.3.10+incompatible
 	google.golang.org/grpc v1.31.0
 	gopkg.in/bsm/ratelimit.v1 v1.0.0-20160220154919-db14e161995a
