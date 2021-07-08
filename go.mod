@@ -8,7 +8,7 @@ require (
 	github.com/envoyproxy/go-control-plane v0.9.6
 	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
-	github.com/golang/protobuf v1.4.2
+	github.com/golang/protobuf v1.4.3
 	github.com/google/gops v0.3.12 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20190309154008-847fc94819f9
 	github.com/jtolds/gls v4.20.0+incompatible
